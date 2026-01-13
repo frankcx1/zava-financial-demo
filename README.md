@@ -193,6 +193,6 @@ pip install flask openai pypdf python-docx --break-system-packages
 
 ## Credits
 
-Built with ❤️ and Claude by Microsoft Surface Field Marketing
+Built with ❤️ and Claude by Microsoft Surface GTM Corp Marketing
 
 *Demonstrating the power of cloud AI for development + on-device AI for secure deployment*
