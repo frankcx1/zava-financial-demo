@@ -1,184 +1,127 @@
-# Surface Copilot+ PC — Local NPU AI Demo
+# Surface NPU Demo — Local AI Assistant
 
-A branded demo application showcasing on-device AI document analysis using the Neural Processing Unit (NPU) on Microsoft Surface Copilot+ PCs.
+A branded demo application showcasing on-device AI capabilities using the Neural Processing Unit (NPU) on Microsoft Surface Copilot+ PCs.
 
-**Features:**
-- 📄 Document upload and analysis (PDF, DOCX, TXT)
-- 💬 Chat with AI locally
-- 🔒 100% offline capable — no data leaves the device
-- ⚡ Powered by Phi Silica via Windows AI API
-- ⏱️ Response time display
-- 🔄 Multiple model support
+**100% local processing — your data never leaves the device.**
 
 ---
 
-## Prerequisites
+## Features
 
-- **Windows 11** on a Copilot+ PC (Snapdragon X Elite/Plus with NPU)
-- **Administrator access** for installations
+| Feature | Description |
+|---------|-------------|
+| 📄 **Document Analysis** | Upload PDF, DOCX, TXT files for summarization, key points, Q&A, and simplification |
+| 🔐 **PII Detection** | Scan documents for SSN, credit cards, addresses, phone numbers, emails |
+| 🌐 **Translation** | Translate documents to 15 languages (Spanish, French, German, Chinese, etc.) |
+| 📷 **ID Verification** | Camera capture + OCR + AI parsing of driver licenses — fully offline |
+| 💬 **Chat** | Conversational AI assistant running entirely on-device |
+| ✈️ **Offline Mode** | Works with Airplane Mode enabled — the "wow" demo moment |
 
 ---
 
-## Quick Start (Automated)
+## Supported Hardware
 
-1. **Open PowerShell as Administrator**
-2. **Navigate to this folder:**
+| Platform | NPU Performance | Example Devices |
+|----------|-----------------|-----------------|
+| Qualcomm Snapdragon X Elite/Plus | 45 TOPS | Surface Pro 11, Surface Laptop 7 (ARM) |
+| Intel Core Ultra Series 2 (Lunar Lake) | 48 TOPS | Surface Laptop 7 (Intel) |
+| Intel Core Ultra Series 1 (Meteor Lake) | 10-11 TOPS | Various OEM devices |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Windows 11 24H2 on a Copilot+ PC
+- Python 3.10+ (Microsoft Store or python.org)
+- VS Code with AI Toolkit extension
+
+### Installation
+
+1. **Install Python dependencies:**
    ```powershell
-   cd "C:\Surface-NPU-Demo"
+   pip install flask openai pypdf python-docx
    ```
-3. **Run the setup script:**
+
+2. **Set up VS Code AI Toolkit:**
+   - Install "AI Toolkit" extension in VS Code
+   - Open AI Toolkit → Catalog → Load "Phi Silica"
+   - Foundry Local will start automatically on localhost:5272
+
+3. **Run the demo:**
    ```powershell
-   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-   .\setup.ps1
-   ```
-4. **Complete the manual steps** for VS Code AI Toolkit (see below)
-5. **Run the demo:**
-   ```powershell
+   cd "C:\Path\To\NPU-Demo"
    python npu_demo_flask.py
    ```
-6. **Open browser:** http://localhost:5000
+
+4. **Open browser:** http://localhost:5000
 
 ---
 
-## Manual Setup (Step-by-Step)
+## Files
 
-### Step 1: Install Python (ARM64)
-
-```powershell
-# Download Python ARM64 installer
-Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.11.9/python-3.11.9-arm64.exe" -OutFile "$env:TEMP\python-arm64.exe"
-
-# Run installer (check "Add to PATH")
-Start-Process "$env:TEMP\python-arm64.exe" -Wait
-
-# Verify installation (restart PowerShell first)
-python --version
-```
-
-**Or** download manually from: https://www.python.org/downloads/windows/
-> ⚠️ Choose the **ARM64** version, NOT x64
-
-### Step 2: Install VS Code
-
-```powershell
-# Using winget (recommended)
-winget install Microsoft.VisualStudioCode
-```
-
-**Or** download from: https://code.visualstudio.com/
-
-### Step 3: Install AI Toolkit Extension
-
-1. Open VS Code
-2. Press `Ctrl+Shift+X` to open Extensions
-3. Search for **"AI Toolkit"**
-4. Install **"AI Toolkit for Visual Studio Code"** by Microsoft
-5. Restart VS Code
-
-### Step 4: Activate Phi Silica
-
-1. In VS Code, click the **AI Toolkit** icon in the left sidebar
-2. Click **"Local Models"** at the top
-3. Select the **"Windows AI API"** tab
-4. Find **"Phi Silica"** and click **"Add"**
-5. Wait for activation to complete (shows ✓ Added)
-
-> This enables the Phi Silica model via Windows AI APIs — it's built into Windows on Copilot+ PCs.
-
-### Step 5: Start Foundry Local
-
-The AI Toolkit should auto-start Foundry Local. Verify it's running:
-
-```powershell
-# Check if Foundry Local is responding
-Invoke-RestMethod -Uri "http://localhost:5272/v1/models"
-```
-
-You should see a list of available models including `phi-silica`.
-
-### Step 6: Install Python Dependencies
-
-```powershell
-# Navigate to demo folder
-cd "C:\Surface-NPU-Demo"
-
-# Install required packages
-pip install flask openai pypdf python-docx --break-system-packages
-```
-
-### Step 7: Run the Demo
-
-```powershell
-python npu_demo_flask.py
-```
-
-Open your browser to: **http://localhost:5000**
+| File | Description |
+|------|-------------|
+| `npu_demo_flask.py` | Main demo application (Intel version) |
+| `npu_demo_flask_qualcomm.py` | Qualcomm Snapdragon version with QNN models |
+| `surface-logo.png` | Microsoft Surface logo |
+| `copilot-logo.avif` | Copilot+ PC logo |
+| `Sample_Loan_Application_With_PII.txt` | Test document for PII detection demo |
+| `Enterprise_AI_Strategy_2026.pdf` | Sample document for analysis demos |
+| `Surface_NPU_Demo_Install_Guide.docx` | Detailed installation guide |
+| `setup.ps1` | Automated setup script |
+| `requirements.txt` | Python dependencies |
 
 ---
 
-## Demo Script for Customer Presentations
+## Demo Flow
 
-### Opening
-*"This demo was built in a few hours using Claude — I'm in marketing, not engineering. That's cloud AI as a productivity multiplier. But what this app DOES is show on-device AI for your regulated data."*
+### Document Analysis + PII Detection
+1. Upload `Sample_Loan_Application_With_PII.txt`
+2. Click **"Detect PII"** — watch it find SSNs, credit cards, names, addresses
+3. Click **"Summarize"** to show document comprehension
+4. Select a language and click **"Translate"**
 
-### Flow
-1. **Show the interface** — branded Surface + Copilot+ PC
-2. **Enable Airplane Mode** — watch the badge change to "✈️ Offline Mode"
-3. **Upload the sample PDF** — Enterprise_AI_Strategy_2026.pdf
-4. **Click Summarize** — show the ~20-30s local generation
-5. **Ask a follow-up question** — demonstrates context retention
-6. **Switch models** — show flexibility with different model options
+### ID Verification (Bank Teller Use Case)
+1. Click the **"ID Verification"** tab
+2. Select your camera from the dropdown
+3. Click **"Start Camera"** and position a driver license
+4. Click **"Capture ID"** then **"Analyze ID"**
+5. Watch the 3-step pipeline: Capture → OCR → AI Analysis
 
-### Key Talking Points
-- *"All processing happened on the NPU — no data left this device"*
-- *"No cloud API calls to audit or secure"*
-- *"Works completely offline for air-gapped environments"*
-- *"Your M&A docs, client data, legal contracts — analyzed locally"*
+### The "Wow" Moment
+1. **Turn on Airplane Mode**
+2. Repeat any demo above
+3. **Everything still works** — the AI never needed the cloud
+
+---
+
+## Key Talking Points
+
+### Privacy & Security
+> "Your ID image and sensitive documents never leave this device. The entire AI pipeline — capture, OCR, analysis — runs 100% locally. There's no data to breach because nothing was transmitted."
+
+### Local AI Capability  
+> "Local AI models can handle 80% of typical enterprise AI tasks: summarization, extraction, translation, classification. For workflows processing PII, that's not a limitation — it's the right tool for the job."
+
+### NPU Performance
+> "The NPU delivers 45-48 TOPS of dedicated AI processing. Unlike GPU-based AI, it runs without draining your battery or spinning up fans. It's always-on, always-ready AI."
+
+### Cloud vs. Local
+> "Cloud AI is like hiring a PhD for data entry — it works, but you're overpaying and sending documents off-premises. Local AI is purpose-fit: dedicated silicon doing exactly what the task requires."
 
 ---
 
 ## Troubleshooting
 
-### "Foundry Local not responding"
-```powershell
-# Check if the service is running
-Get-Process -Name "foundry*" -ErrorAction SilentlyContinue
-
-# Restart VS Code and AI Toolkit
-```
-
-### "Model not found: phi-silica"
-- Ensure you activated Phi Silica in AI Toolkit (Step 4)
-- Check available models:
-  ```powershell
-  (Invoke-RestMethod -Uri "http://localhost:5272/v1/models").data
-  ```
-
-### "Python not recognized"
-- Restart PowerShell after Python installation
-- Verify PATH includes Python:
-  ```powershell
-  $env:PATH -split ";" | Where-Object { $_ -like "*Python*" }
-  ```
-
-### "pip install fails"
-Try with the `--break-system-packages` flag:
-```powershell
-pip install flask openai pypdf python-docx --break-system-packages
-```
-
----
-
-## Files Included
-
-| File | Description |
-|------|-------------|
-| `npu_demo_flask.py` | Main Flask application |
-| `setup.ps1` | Automated setup script |
-| `requirements.txt` | Python dependencies |
-| `surface-logo.png` | Microsoft Surface logo |
-| `copilot-logo.avif` | Copilot+ PC logo |
-| `Enterprise_AI_Strategy_2026.pdf` | Sample document for demos |
+| Issue | Solution |
+|-------|----------|
+| "Connection refused" error | Ensure Foundry Local is running (check AI Toolkit in VS Code) |
+| Model not responding | Restart VS Code and reload Phi Silica model |
+| Camera not detected | Check browser permissions, try different camera from dropdown |
+| OCR quality poor | Improve lighting, hold ID flat, ensure camera is focused |
+| JavaScript errors | Hard refresh with Ctrl+Shift+R |
 
 ---
 
@@ -187,6 +130,7 @@ pip install flask openai pypdf python-docx --break-system-packages
 - **Framework:** Flask (Python)
 - **AI Backend:** Foundry Local + Windows AI API
 - **Model:** Phi Silica (optimized for NPU)
+- **OCR:** Tesseract.js (runs in browser, no server needed)
 - **Endpoint:** OpenAI-compatible API at `localhost:5272`
 
 ---
@@ -195,4 +139,4 @@ pip install flask openai pypdf python-docx --break-system-packages
 
 Built with ❤️ and Claude by Microsoft Surface GTM Corp Marketing
 
-*Demonstrating the power of cloud AI for development + on-device AI for secure deployment*
+*Demonstrating cloud AI for development + on-device AI for secure deployment*
