@@ -6,21 +6,22 @@
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Surface Copilot+ PC — NPU Demo Setup" -ForegroundColor Cyan
+Write-Host "  Surface Copilot+ PC - NPU Demo Setup" -ForegroundColor Cyan
+Write-Host "  Powered by Foundry Local + Phi-4 Mini" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Check if running as admin
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Host "⚠️  Please run this script as Administrator!" -ForegroundColor Yellow
-    Write-Host "   Right-click PowerShell → Run as Administrator" -ForegroundColor Yellow
+    Write-Host "!! Please run this script as Administrator!" -ForegroundColor Yellow
+    Write-Host "   Right-click PowerShell -> Run as Administrator" -ForegroundColor Yellow
     exit 1
 }
 
 # Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Write-Host "📁 Working directory: $ScriptDir" -ForegroundColor Gray
+Write-Host "Working directory: $ScriptDir" -ForegroundColor Gray
 Write-Host ""
 
 # ============================================================
@@ -32,7 +33,7 @@ $pythonInstalled = $false
 try {
     $pythonVersion = python --version 2>&1
     if ($pythonVersion -match "Python 3") {
-        Write-Host "✓ Python already installed: $pythonVersion" -ForegroundColor Green
+        Write-Host "[OK] Python already installed: $pythonVersion" -ForegroundColor Green
         $pythonInstalled = $true
     }
 } catch {
@@ -40,21 +41,21 @@ try {
 }
 
 if (-not $pythonInstalled) {
-    Write-Host "📥 Downloading Python ARM64..." -ForegroundColor Cyan
+    Write-Host "Downloading Python ARM64..." -ForegroundColor Cyan
     $pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-arm64.exe"
     $pythonInstaller = "$env:TEMP\python-arm64.exe"
-    
+
     try {
         Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonInstaller -UseBasicParsing
-        Write-Host "📦 Installing Python (this may take a minute)..." -ForegroundColor Cyan
-        Write-Host "   ⚠️  CHECK 'Add Python to PATH' in the installer!" -ForegroundColor Yellow
+        Write-Host "Installing Python (this may take a minute)..." -ForegroundColor Cyan
+        Write-Host "   CHECK 'Add Python to PATH' in the installer!" -ForegroundColor Yellow
         Start-Process $pythonInstaller -ArgumentList "/passive", "InstallAllUsers=1", "PrependPath=1" -Wait
-        Write-Host "✓ Python installed" -ForegroundColor Green
-        
+        Write-Host "[OK] Python installed" -ForegroundColor Green
+
         # Refresh PATH
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
     } catch {
-        Write-Host "✗ Failed to install Python. Please install manually from python.org" -ForegroundColor Red
+        Write-Host "[FAIL] Failed to install Python. Please install manually from python.org" -ForegroundColor Red
         Write-Host "   Download ARM64 version: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
     }
 }
@@ -62,76 +63,32 @@ if (-not $pythonInstalled) {
 Write-Host ""
 
 # ============================================================
-# Step 2: Check/Install VS Code
+# Step 2: Install Python Dependencies
 # ============================================================
-Write-Host "Step 2: Checking VS Code installation..." -ForegroundColor Yellow
+Write-Host "Step 2: Installing Python dependencies..." -ForegroundColor Yellow
 
-$vscodeInstalled = $false
-$vscodePaths = @(
-    "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe",
-    "$env:ProgramFiles\Microsoft VS Code\Code.exe",
-    "${env:ProgramFiles(x86)}\Microsoft VS Code\Code.exe"
-)
-
-foreach ($path in $vscodePaths) {
-    if (Test-Path $path) {
-        Write-Host "✓ VS Code found: $path" -ForegroundColor Green
-        $vscodeInstalled = $true
-        break
-    }
-}
-
-if (-not $vscodeInstalled) {
-    Write-Host "📥 Installing VS Code via winget..." -ForegroundColor Cyan
-    try {
-        winget install Microsoft.VisualStudioCode --accept-source-agreements --accept-package-agreements
-        Write-Host "✓ VS Code installed" -ForegroundColor Green
-    } catch {
-        Write-Host "⚠️  Could not auto-install VS Code. Please install manually:" -ForegroundColor Yellow
-        Write-Host "   https://code.visualstudio.com/" -ForegroundColor Cyan
-    }
-}
-
-Write-Host ""
-
-# ============================================================
-# Step 3: Install Python Dependencies
-# ============================================================
-Write-Host "Step 3: Installing Python dependencies..." -ForegroundColor Yellow
-
-# Create requirements.txt if not exists
 $requirementsPath = Join-Path $ScriptDir "requirements.txt"
-if (-not (Test-Path $requirementsPath)) {
-    @"
-flask>=3.0.0
-openai>=1.0.0
-pypdf>=4.0.0
-python-docx>=1.0.0
-"@ | Out-File -FilePath $requirementsPath -Encoding UTF8
-}
 
 try {
-    # Try pip install
-    $pipResult = pip install -r $requirementsPath --break-system-packages 2>&1
+    pip install -r $requirementsPath --break-system-packages 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Python dependencies installed" -ForegroundColor Green
+        Write-Host "[OK] Python dependencies installed" -ForegroundColor Green
     } else {
-        # Fallback: install individually
         Write-Host "   Trying individual package install..." -ForegroundColor Gray
-        pip install flask openai pypdf python-docx --break-system-packages
-        Write-Host "✓ Python dependencies installed" -ForegroundColor Green
+        pip install flask openai pypdf python-docx foundry-local --break-system-packages
+        Write-Host "[OK] Python dependencies installed" -ForegroundColor Green
     }
 } catch {
-    Write-Host "⚠️  Some packages may have failed. Try manually:" -ForegroundColor Yellow
-    Write-Host "   pip install flask openai pypdf python-docx --break-system-packages" -ForegroundColor Cyan
+    Write-Host "[WARN] Some packages may have failed. Try manually:" -ForegroundColor Yellow
+    Write-Host "   pip install flask openai pypdf python-docx foundry-local" -ForegroundColor Cyan
 }
 
 Write-Host ""
 
 # ============================================================
-# Step 4: Verify files exist
+# Step 3: Verify demo files exist
 # ============================================================
-Write-Host "Step 4: Verifying demo files..." -ForegroundColor Yellow
+Write-Host "Step 3: Verifying demo files..." -ForegroundColor Yellow
 
 $requiredFiles = @(
     "npu_demo_flask.py",
@@ -143,74 +100,87 @@ $missingFiles = @()
 foreach ($file in $requiredFiles) {
     $filePath = Join-Path $ScriptDir $file
     if (Test-Path $filePath) {
-        Write-Host "✓ $file" -ForegroundColor Green
+        Write-Host "[OK] $file" -ForegroundColor Green
     } else {
-        Write-Host "✗ $file (MISSING)" -ForegroundColor Red
+        Write-Host "[MISSING] $file" -ForegroundColor Red
         $missingFiles += $file
     }
 }
 
-# Optional file
-$samplePdf = Join-Path $ScriptDir "Enterprise_AI_Strategy_2026.pdf"
-if (Test-Path $samplePdf) {
-    Write-Host "✓ Enterprise_AI_Strategy_2026.pdf (sample doc)" -ForegroundColor Green
+# Check tesseract directory
+$tesseractDir = Join-Path $ScriptDir "tesseract"
+if (Test-Path $tesseractDir) {
+    Write-Host "[OK] tesseract/ (offline OCR)" -ForegroundColor Green
 } else {
-    Write-Host "○ Enterprise_AI_Strategy_2026.pdf (optional sample)" -ForegroundColor Gray
+    Write-Host "[WARN] tesseract/ not found (ID Verification tab will need online OCR)" -ForegroundColor Yellow
 }
 
 Write-Host ""
 
 # ============================================================
-# Step 5: Check Foundry Local
+# Step 4: Setup demo data
 # ============================================================
-Write-Host "Step 5: Checking Foundry Local / AI Toolkit..." -ForegroundColor Yellow
+Write-Host "Step 4: Setting up demo data..." -ForegroundColor Yellow
+
+$demoDir = Join-Path $env:USERPROFILE "Documents\Demo"
+$myDayDir = Join-Path $demoDir "My_Day"
+$inboxDir = Join-Path $myDayDir "Inbox"
+
+if (Test-Path $myDayDir) {
+    Write-Host "[OK] Demo data directory exists: $myDayDir" -ForegroundColor Green
+} else {
+    Write-Host "[INFO] Creating demo data directory: $myDayDir" -ForegroundColor Cyan
+    New-Item -Path $inboxDir -ItemType Directory -Force | Out-Null
+    Write-Host "[OK] Demo data directory created" -ForegroundColor Green
+    Write-Host "[WARN] You'll need to copy demo data files (calendar.ics, tasks.csv, emails)" -ForegroundColor Yellow
+}
+
+Write-Host ""
+
+# ============================================================
+# Step 5: Test Foundry Local
+# ============================================================
+Write-Host "Step 5: Testing Foundry Local SDK..." -ForegroundColor Yellow
 
 try {
-    $models = Invoke-RestMethod -Uri "http://localhost:5272/v1/models" -TimeoutSec 5
-    Write-Host "✓ Foundry Local is running" -ForegroundColor Green
-    
-    $modelList = $models.data | ForEach-Object { $_.id }
-    Write-Host "  Available models: $($modelList -join ', ')" -ForegroundColor Gray
-    
-    if ($modelList -contains "phi-silica") {
-        Write-Host "✓ Phi Silica is available" -ForegroundColor Green
+    $testResult = python -c "from foundry_local import FoundryLocalManager; print('OK')" 2>&1
+    if ($testResult -match "OK") {
+        Write-Host "[OK] Foundry Local SDK installed" -ForegroundColor Green
+        Write-Host "   The app will automatically download and start phi-4-mini on first run" -ForegroundColor Gray
     } else {
-        Write-Host "⚠️  Phi Silica not found. Please activate it in AI Toolkit." -ForegroundColor Yellow
+        Write-Host "[WARN] Foundry Local SDK test failed" -ForegroundColor Yellow
+        Write-Host "   Try: pip install foundry-local" -ForegroundColor Cyan
     }
 } catch {
-    Write-Host "⚠️  Foundry Local not responding" -ForegroundColor Yellow
-    Write-Host "   Please complete the manual AI Toolkit setup (see README)" -ForegroundColor Yellow
+    Write-Host "[WARN] Could not verify Foundry Local SDK" -ForegroundColor Yellow
+    Write-Host "   Try: pip install foundry-local" -ForegroundColor Cyan
 }
 
 Write-Host ""
 
 # ============================================================
-# Summary & Next Steps
+# Summary
 # ============================================================
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Setup Summary" -ForegroundColor Cyan
+Write-Host "  Setup Complete" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
 if ($missingFiles.Count -gt 0) {
-    Write-Host "⚠️  Missing files: $($missingFiles -join ', ')" -ForegroundColor Red
+    Write-Host "[WARN] Missing files: $($missingFiles -join ', ')" -ForegroundColor Red
     Write-Host ""
 }
 
-Write-Host "📋 MANUAL STEPS REQUIRED:" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "1. Open VS Code" -ForegroundColor White
-Write-Host "2. Install 'AI Toolkit' extension (Ctrl+Shift+X, search 'AI Toolkit')" -ForegroundColor White
-Write-Host "3. Click AI Toolkit icon → Local Models → Windows AI API" -ForegroundColor White
-Write-Host "4. Click 'Add' next to Phi Silica" -ForegroundColor White
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Once AI Toolkit is configured, run the demo:" -ForegroundColor Green
+Write-Host "To run the demo:" -ForegroundColor Green
 Write-Host ""
 Write-Host "   cd `"$ScriptDir`"" -ForegroundColor Cyan
 Write-Host "   python npu_demo_flask.py" -ForegroundColor Cyan
 Write-Host ""
+Write-Host "   Or double-click: run.bat" -ForegroundColor Cyan
+Write-Host ""
 Write-Host "Then open: http://localhost:5000" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "No VS Code or AI Toolkit required!" -ForegroundColor Green
+Write-Host "Foundry Local handles model download and runtime automatically." -ForegroundColor Gray
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan

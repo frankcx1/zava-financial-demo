@@ -1,0 +1,90 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Microsoft//Outlook 16.0//EN
+BEGIN:VEVENT
+DTSTART:20260207T080000
+DTEND:20260207T083000
+SUMMARY:Breakfast with Kevin — AV Walkthrough
+LOCATION:Fairmont San Jose — Fountain Restaurant
+DESCRIPTION:Quick breakfast to review AV setup for tonight's event at Mountain Winery.\n\nKEY ITEMS:\n- Kevin confirming projector and screen placement at demo stations\n- WiFi situation at venue (demos run offline, but need connectivity for setup)\n- Kevin handling Station 2 (ID Verification), Jack on Station 3 (Document Intelligence)\n- Jack arrives at hotel by 9 AM\n\nORDER: Kevin likes the eggs benedict here.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T093000
+DTEND:20260207T101500
+SUMMARY:Call — Rachel Martinez, CEO Apex Dynamics
+LOCATION:Virtual (Teams)
+ORGANIZER;CN=Rachel Martinez:mailto:rmartinez@apexdynamics.com
+DESCRIPTION:Quarterly sync with Rachel on AI partnership progress.\n\nAGENDA:\n1. Review pilot results from Apex healthcare division\n2. Discuss expanding on-device AI to Apex financial services vertical\n3. Rachel mentioned interest in NPU hardware refresh for her executive team\n4. Budget approval timeline — she needs board sign-off by end of Q1\n\nNOTE: Rachel's birthday is February 15. She loved the Mountain Winery wines when you visited Saratoga last year. Consider ordering a case of the Estate Cabernet during tonight's wine tasting.\n\nPREP: Review the pilot metrics deck Alex sent last week.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T103000
+DTEND:20260207T113000
+SUMMARY:Team Huddle — Event Prep
+LOCATION:Fairmont San Jose — Conference Room B
+ORGANIZER;CN=Sandra Mitchell:mailto:smitchell@microsoft.com
+ATTENDEE;CN=Frank Buchholz:mailto:frankbu@microsoft.com
+ATTENDEE;CN=Jack Rivera:mailto:jrivera@microsoft.com
+ATTENDEE;CN=Kevin Park:mailto:kpark@microsoft.com
+DESCRIPTION:Final walkthrough for tonight's executive event at Mountain Winery.\n\nAGENDA:\n1. Confirm demo station assignments (Frank on AI Agent station)\n2. Device giveaway logistics (10 Surface Laptop 7, 10 Surface Pro 11)\n3. Guest seating — 42 confirmed RSVPs\n4. Car service logistics (team van departs 1:15 PM)\n5. Timeline review: wine tasting 5 PM, dinner 6:30 PM, demos 8:30 PM\n\nACTION: Frank — have the NPU demo app tested and ready. Sandra wants a dry run at 2 PM at the venue.\n\nNOTE: Sandra sent updated guest list this morning. 42 confirmed. David Park (Contoso) and James Liu (board) both confirmed.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T120000
+DTEND:20260207T130000
+SUMMARY:Prep Window — Priority Items
+LOCATION:Fairmont San Jose — Room 1412
+DESCRIPTION:Blocked time to handle outstanding items before heading to the venue.\n\nMUST DO:\n1. Reply to Sarah Chen re: Q4 APAC numbers (she messaged last night — needs before Monday)\n2. Read Jessica Torres' NDA flag — CRITICAL before seeing David Park tonight\n3. Skim Alex Kim's AI governance deck — James Liu will ask about this tonight\n4. Review guest list — know who's at your table\n\nPACK: Surface Laptop 7 and Surface Pro 11 demo units from room safe. Chargers and display adapters. Don't forget the USB-C hub.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T131500
+DTEND:20260207T140000
+SUMMARY:Car to Mountain Winery
+LOCATION:Fairmont San Jose — Main Lobby
+DESCRIPTION:Team van departing from hotel lobby. Driver: Michael Torres, black Suburban.\n\nROUTE: Fairmont San Jose to CA-85 S to Big Basin Way to Pierce Road to Mountain Winery.\nDRIVE TIME: ~25 minutes (weekend traffic should be light).\n\nEveryone rides together: Frank, Sandra, Jack, Kevin.\nDemo equipment goes in the back — two Surface Laptop 7, two Surface Pro 11, display adapters, power strips.\n\nNOTE: Return car for Frank only at end of evening (after late dinner with David Park). Rest of team takes earlier van back.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T140000
+DTEND:20260207T153000
+SUMMARY:Dry Run — AI Agent Demo
+LOCATION:The Mountain Winery — Demo Station 1
+ORGANIZER;CN=Sandra Mitchell:mailto:smitchell@microsoft.com
+DESCRIPTION:Full dry run of the NPU AI Agent demo at the venue.\n\nCHECKLIST:\n- Launch Flask app, verify both tabs load\n- Test Brief Me flow end-to-end\n- Test Go Offline (WiFi toggle) — verify it works and recovers\n- Test agent chat with live commands\n- Confirm display adapter works with venue screen\n- Verify demo files staged in Documents Demo folder\n\nSandra wants to see the permission workflow — the governed agent piece.\n\nFALLBACK: If AI Agent has issues, pivot to ID Verification tab — camera plus OCR is reliable and still impressive.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T170000
+DTEND:20260207T183000
+SUMMARY:Guest Arrival & Wine Tasting on the Terrace
+LOCATION:The Mountain Winery — Main Terrace
+DESCRIPTION:Guests arrive at Mountain Winery. Wine tasting and appetizers on the terrace with panoramic views of the Santa Cruz Mountains.\n\nENTERTAINMENT: Sandra booked a live acoustic set by Kayleigh Rose Amstutz — she goes by a stage name but she's incredible, rising midwest artist. Performing during the wine tasting hour on the terrace. Sandra says she's a huge deal right now. She'll do 4-5 songs.\n\nSPECIAL COCKTAIL: The venue created a "Red Wine Supernova" signature cocktail for the event — cabernet with edible gold shimmer. Very on-brand for the evening.\n\nSTRATEGY:\n- Work the room during this hour — 1:1 conversations happen here\n- Key people to connect with: David Park (Contoso), James Liu (board), Dr. Sarah Okafor (Meridian Health)\n- Sandra will make introductions for guests you haven't met\n- Device display near entrance — guests will naturally browse\n\nAVOID: Don't get pulled into a long demo during wine tasting. Save the AI Agent walkthrough for demo stations after dinner.\n\nWINE NOTE: Mountain Winery Estate Cabernet is excellent — consider ordering a case for Rachel Martinez birthday (Feb 15).
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T183000
+DTEND:20260207T203000
+SUMMARY:Dinner & Fireside Discussion
+LOCATION:The Mountain Winery — Chateau
+DESCRIPTION:Seated dinner in the historic chateau with fireside discussion prompts at each table.\n\nTABLE TOPICS (printed cards):\n- What would change if your AI assistant couldn't leak data by design?\n- Would you give an AI agent permission to act on your files? Under what rules?\n- What's the last thing you'd move to the cloud?\n\nFrank is at Table 3 with: David Park (Contoso CEO), James Liu (board member), Dr. Sarah Okafor (Meridian Health CEO), Tom Bradley (Whitfield Capital CIO).\n\nWARNING: Jessica Torres flagged the Contoso NDA — do NOT discuss specific partnership terms or M&A with David Park until Section 7.3 non-compete clause is resolved.\n\nNOTE: Be present. Don't pitch — listen, then offer to show the demo after dinner.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T203000
+DTEND:20260207T220000
+SUMMARY:Demo Stations & Device Showcase
+LOCATION:The Mountain Winery — Demo Hall
+DESCRIPTION:Three demo stations open for hands-on exploration.\n\nSTATION 1: AI Agent — My Day briefing plus governed execution (FRANK)\nSTATION 2: ID Verification — on-device document scanning (Kevin)\nSTATION 3: Document Intelligence — PDF analysis plus summarization (Jack)\n\nGUESTS BROWSE FREELY. Keep demos under 90 seconds unless they ask for more.\n\nDEVICE GIVEAWAYS: 10 Surface Laptop 7 and 10 Surface Pro 11 with 5G. Sandra handles distribution during wrap-up.\n\nKILLER DEMO MOMENT: Run Brief Me then show governed execution then kill WiFi live then continue without pause.\n\nFALLBACK: If AI Agent has issues, pivot to ID Verification or basic chat.\n\nBACKGROUND MUSIC: Kevin has the playlist — mix of chill indie and pop. He put "Good Luck, Babe!" and "Hot To Go!" on there which is perfect energy for demos. Also has some Sabrina Carpenter ("Espresso") for the transition between stations.
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260207T223000
+DTEND:20260208T003000
+SUMMARY:Late Dinner — David Park
+LOCATION:The Plumed Horse — 14555 Big Basin Way, Saratoga
+DESCRIPTION:Private dinner with David Park (Contoso CEO) at The Plumed Horse, Michelin-starred restaurant 5 minutes from Mountain Winery.\n\nCONTEXT: David's EA Lisa mentioned he wants to discuss partnership expansion and deeper strategic alignment. This likely signals M&A interest.\n\nCRITICAL WARNING: Jessica Torres (Legal) flagged the Contoso NDA this morning. Section 7.3 non-compete clause is too broad. Do NOT discuss specific M&A terms, valuation, or binding commitments. Keep conversation relationship-focused.\n\nSAFE TOPICS: Industry trends, on-device AI vision, Contoso healthcare vertical needs, his experience at tonight's event.\nUNSAFE TOPICS: Partnership terms, exclusivity, timeline, valuation.\n\nRESERVATION: 10:30 PM, 2 guests, under Buchholz. Confirmed by Sandra.\n\nNOTE FROM SANDRA: "Good luck, babe! Keep it casual tonight. You'll be a femininomenon." (I think she's been listening to too much Chappell Roan.)\n\nCAR: Michael Torres (same driver) will wait at Mountain Winery. Drop David at The Westin San Jose after dinner, then to Fairmont.
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
