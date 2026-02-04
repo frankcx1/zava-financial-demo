@@ -8,6 +8,7 @@ import os
 import json
 import re
 import subprocess
+import threading
 import time as _time
 from flask import Flask, render_template_string, request, Response, jsonify
 from openai import OpenAI
@@ -19,6 +20,7 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # --- Model initialization via Foundry Local SDK (fallback to localhost:5272) ---
+print("Starting Foundry Local runtime...", flush=True)
 FOUNDRY_AVAILABLE = False
 try:
     from foundry_local import FoundryLocalManager
@@ -31,6 +33,9 @@ try:
 except Exception:
     client = OpenAI(base_url="http://localhost:5272/v1", api_key="not-needed")
     DEFAULT_MODEL = "phi-4-mini"
+
+# --- Model readiness flag (set after warmup) ---
+MODEL_READY = False
 
 # --- Agent infrastructure ---
 DEMO_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Demo")
@@ -1438,9 +1443,46 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             gap: 10px;
         }
         .privacy-icon { font-size: 1.5em; }
+
+        /* Warmup overlay */
+        .warmup-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 10000;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            transition: opacity 0.5s ease;
+        }
+        .warmup-overlay.fade-out { opacity: 0; pointer-events: none; }
+        .warmup-logo { display: flex; align-items: center; gap: 25px; margin-bottom: 30px; }
+        .warmup-logo img { height: 36px; opacity: 0.9; }
+        .warmup-title { font-size: 1.4em; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .warmup-status { font-size: 0.95em; color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+        .warmup-bar-track {
+            width: 320px; height: 4px; background: rgba(255,255,255,0.1);
+            border-radius: 2px; overflow: hidden;
+        }
+        .warmup-bar-fill {
+            height: 100%; width: 0%; border-radius: 2px;
+            background: linear-gradient(90deg, #60a5fa, #a78bfa);
+            transition: width 0.3s ease;
+        }
+        .warmup-time { font-size: 0.8em; color: rgba(255,255,255,0.35); margin-top: 12px; }
     </style>
 </head>
 <body>
+    <!-- Warmup overlay — shown until model is ready -->
+    <div class="warmup-overlay" id="warmupOverlay">
+        <div class="warmup-logo">
+            <img src="/logos/surface-logo.png" alt="Surface" onerror="this.style.display='none'">
+            <img src="/logos/copilot-logo.avif" alt="Copilot+" onerror="this.style.display='none'">
+        </div>
+        <div class="warmup-title">Local NPU AI Assistant</div>
+        <div class="warmup-status" id="warmupStatus">Loading Phi-4 Mini on NPU...</div>
+        <div class="warmup-bar-track"><div class="warmup-bar-fill" id="warmupBar"></div></div>
+        <div class="warmup-time" id="warmupTime"></div>
+    </div>
+
     <div class="container">
         <header>
             <div class="logos">
@@ -1759,8 +1801,41 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
     </div>
 
     <script>
+        // --- Warmup overlay: poll /health until model is ready ---
+        (function() {
+            var overlay = document.getElementById("warmupOverlay");
+            if (!overlay) return;
+            var bar = document.getElementById("warmupBar");
+            var statusEl = document.getElementById("warmupStatus");
+            var timeEl = document.getElementById("warmupTime");
+            var start = Date.now();
+            var maxSecs = 90;
+            var poll;
+            function tick() {
+                var elapsed = (Date.now() - start) / 1000;
+                var pct = Math.min((elapsed / maxSecs) * 100, 95);
+                bar.style.width = pct + "%";
+                timeEl.textContent = Math.floor(elapsed) + "s elapsed";
+            }
+            var ticker = setInterval(tick, 300);
+            poll = setInterval(function() {
+                fetch("/health").then(function(r) { return r.json(); }).then(function(d) {
+                    if (d.ready) {
+                        clearInterval(poll);
+                        clearInterval(ticker);
+                        bar.style.width = "100%";
+                        statusEl.textContent = "Ready";
+                        setTimeout(function() {
+                            overlay.classList.add("fade-out");
+                            setTimeout(function() { overlay.remove(); }, 600);
+                        }, 400);
+                    }
+                }).catch(function() {});
+            }, 1000);
+        })();
+
         console.log("Script starting...");
-        
+
         var currentModel = "phi-4-mini";
         var cameraStream = null;
         
@@ -5068,6 +5143,11 @@ def prep_next_meeting():
 
 DEMO_MODE = False  # Set via --demo-mode flag to bypass offline check for testing
 
+@app.route('/health')
+def health_check():
+    """Returns model readiness status for the warmup overlay."""
+    return jsonify({"ready": MODEL_READY, "model": DEFAULT_MODEL})
+
 @app.route('/demo-mode-status')
 def demo_mode_status():
     """Check if demo mode is enabled (bypasses offline requirement for Clean Room)."""
@@ -5100,6 +5180,64 @@ if __name__ == '__main__':
     print("  - ID Verification (Camera + OCR + AI)")
     print("")
     print("All processing happens 100% locally on your device.")
+    print("")
+
+    # --- Warmup: verify model is loaded and responsive before serving ---
+    print("Warming up model (first call may take a minute)...", flush=True)
+    _warmup_done = threading.Event()
+    _warmup_ok = [False]
+
+    def _warmup_call():
+        try:
+            client.chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=4,
+                temperature=0.1,
+            )
+            _warmup_ok[0] = True
+        except Exception:
+            pass
+        _warmup_done.set()
+
+    _warmup_thread = threading.Thread(target=_warmup_call, daemon=True)
+    _warmup_start = _time.time()
+    _warmup_thread.start()
+
+    _spinner = ["|", "/", "-", "\\"]
+    _si = 0
+    while not _warmup_done.wait(timeout=0.5):
+        _elapsed = _time.time() - _warmup_start
+        print(f"\r  {_spinner[_si % 4]}  Loading model... {_elapsed:.0f}s", end="", flush=True)
+        _si += 1
+
+    _warmup_secs = _time.time() - _warmup_start
+    if _warmup_ok[0]:
+        MODEL_READY = True
+        print(f"\r  Model ready in {_warmup_secs:.1f}s              ")
+    else:
+        MODEL_READY = True  # allow serving anyway
+        print(f"\r  Warning: warmup did not complete ({_warmup_secs:.1f}s). Continuing anyway.")
+
+    # --- Keepalive: prevent model from being unloaded during idle ---
+    KEEPALIVE_INTERVAL = 180  # seconds
+
+    def _keepalive_loop():
+        while True:
+            _time.sleep(KEEPALIVE_INTERVAL)
+            try:
+                client.chat.completions.create(
+                    model=DEFAULT_MODEL,
+                    messages=[{"role": "user", "content": "hi"}],
+                    max_tokens=1,
+                    temperature=0.1,
+                )
+            except Exception:
+                pass  # non-critical, will retry next interval
+
+    _keepalive_thread = threading.Thread(target=_keepalive_loop, daemon=True)
+    _keepalive_thread.start()
+
     print("")
     print("Open http://localhost:5000 in your browser")
     print("="*50 + "\n")
