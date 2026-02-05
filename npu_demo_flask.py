@@ -452,6 +452,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 <html>
 <head>
     <title>Local NPU AI Assistant</title>
+    <link rel="icon" type="image/png" href="/logos/favicon.png">
     <script src="/tesseract/tesseract.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -461,8 +462,106 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             min-height: 100vh;
             color: #fff;
         }
-        .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
-        header { text-align: center; padding: 20px 0; }
+
+        /* ── App Shell: sidebar + main ── */
+        .app-shell { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 260px; min-width: 260px;
+            background: linear-gradient(180deg, #0d1117 0%, #111827 100%);
+            border-right: 1px solid rgba(255,255,255,0.08);
+            display: flex; flex-direction: column;
+            transition: width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1);
+            overflow: hidden; z-index: 200;
+        }
+        .sidebar.collapsed { width: 64px; min-width: 64px; }
+        .sidebar.collapsed .sidebar-label,
+        .sidebar.collapsed .sidebar-brand-text,
+        .sidebar.collapsed .sidebar-footer-label,
+        .sidebar.collapsed .sidebar-footer-controls { display: none; }
+        .sidebar.collapsed .sidebar-brand { justify-content: center; }
+        .sidebar.collapsed .sidebar-nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+        .sidebar.collapsed .sidebar-nav-item .nav-icon { margin-right: 0; }
+        .sidebar.collapsed .sidebar-footer { align-items: center; padding: 12px 8px; }
+        .sidebar.collapsed .sidebar-toggle { margin: 8px auto; }
+
+        .sidebar-toggle {
+            background: none; border: 1px solid rgba(255,255,255,0.12);
+            color: #fff; width: 34px; height: 34px; border-radius: 8px;
+            cursor: pointer; font-size: 1.1em; display: flex; align-items: center;
+            justify-content: center; margin: 12px 12px 0 12px; flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .sidebar-toggle:hover { background: rgba(255,255,255,0.08); }
+
+        .sidebar-brand {
+            display: flex; flex-direction: column; align-items: center; gap: 0;
+            padding: 0px 14px 36px; border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .sidebar-brand .brand-logo-surface { width: 92%; max-width: 220px; height: auto; object-fit: contain; }
+        .sidebar-brand .brand-logo-copilot { width: 65%; max-width: 150px; height: auto; object-fit: contain; margin-top: -6px; }
+        .sidebar-brand-text { display: none; }
+        .sidebar.collapsed .sidebar-brand { padding: 12px 6px; gap: 6px; }
+        .sidebar.collapsed .brand-logo-surface { width: 40px; }
+        .sidebar.collapsed .brand-logo-copilot { width: 32px; }
+
+        .sidebar-nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; gap: 2px; }
+        .sidebar-nav-item {
+            display: flex; align-items: center; gap: 0;
+            padding: 12px 18px; cursor: pointer; color: rgba(255,255,255,0.7);
+            border-left: 3px solid transparent; transition: all 0.15s;
+            white-space: nowrap; font-size: 0.92em; text-decoration: none;
+        }
+        .sidebar-nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .sidebar-nav-item.active {
+            border-left-color: #00BCF2; color: #fff;
+            background: rgba(0,188,242,0.08);
+        }
+        .nav-icon { font-size: 1.2em; width: 28px; text-align: center; flex-shrink: 0; margin-right: 10px; }
+        .sidebar-label { overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-nav-sub { display: block; font-size: 0.65em; opacity: 0.45; font-weight: normal; margin-top: 1px; }
+
+        .sidebar-footer {
+            padding: 14px 18px; border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex; flex-direction: column; gap: 8px; font-size: 0.85em;
+        }
+        .sidebar-footer .badge,
+        .sidebar-footer .offline-badge { font-size: 0.78em; margin: 0; padding: 5px 10px; }
+        .sidebar-footer-controls { display: flex; flex-direction: column; gap: 6px; }
+        .sidebar-footer-controls .net-toggle-btn { font-size: 0.78em; padding: 5px 10px; }
+        .sidebar-footer-controls .model-selector { justify-content: flex-start; margin: 0; }
+        .sidebar-footer-controls .model-selector select { font-size: 0.8em; padding: 5px 10px; }
+        .sidebar-footer-label { font-size: 0.78em; opacity: 0.5; margin-bottom: 2px; }
+
+        .main-content { flex: 1; min-width: 0; overflow-y: auto; padding: 20px; max-height: 100vh; }
+
+        /* Mobile overlay */
+        .sidebar-backdrop {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            z-index: 199;
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed; left: 0; top: 0; height: 100vh;
+                transform: translateX(-100%); z-index: 200;
+            }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .sidebar.collapsed { transform: translateX(-100%); }
+            .sidebar.collapsed.mobile-open { transform: translateX(0); }
+            .sidebar-backdrop.visible { display: block; }
+            .main-content { padding: 12px; }
+            .mobile-hamburger {
+                display: flex; position: fixed; top: 12px; left: 12px; z-index: 198;
+                background: rgba(13,17,23,0.9); border: 1px solid rgba(255,255,255,0.12);
+                color: #fff; width: 40px; height: 40px; border-radius: 10px;
+                align-items: center; justify-content: center; font-size: 1.3em; cursor: pointer;
+            }
+        }
+        @media (min-width: 769px) {
+            .mobile-hamburger { display: none !important; }
+        }
+
+        .container { max-width: 100%; margin: 0 auto; padding: 0; }
+        header { display: none; }
         .logos { display: flex; justify-content: center; align-items: center; gap: 35px; margin-bottom: 20px; }
         .logos img.surface-logo { height: 75px; width: auto; object-fit: contain; }
         .logos img.copilot-logo { height: 55px; width: auto; object-fit: contain; }
@@ -518,7 +617,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .model-selector select option { background: #1a1a2e; color: #fff; }
         .response-timer { text-align: center; font-size: 0.85em; color: #00BCF2; margin-top: 10px; }
-        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tabs { display: none; gap: 10px; margin-bottom: 20px; }
         .tab-btn {
             flex: 1;
             padding: 15px;
@@ -549,7 +648,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .agent-chat-layout {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 420px);
+            height: calc(100vh - 120px);
         }
         .agent-topbar {
             display: flex;
@@ -636,7 +735,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .suggestion-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             max-width: 720px;
             width: 100%;
@@ -657,6 +756,28 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .suggestion-chip:hover { background: rgba(0,188,242,0.15); border-color: rgba(0,188,242,0.4); }
         .chip-icon { font-size: 1.1em; flex-shrink: 0; }
+
+        /* Device Health check display */
+        .health-checks-container { margin: 8px 0; }
+        .health-check-entry {
+            margin: 4px 0; padding: 8px 12px;
+            background: rgba(255,255,255,0.03); border-radius: 6px;
+            border-left: 3px solid rgba(255,255,255,0.15); font-size: 0.85em;
+        }
+        .health-check-entry.done { border-left-color: #1db954; }
+        .health-check-entry.error { border-left-color: #FF4444; }
+        .health-check-name { font-weight: 600; margin-bottom: 2px; }
+        .health-check-cmd {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.78em; opacity: 0.4; margin: 2px 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .health-check-output {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.82em; white-space: pre-wrap; margin-top: 4px;
+            max-height: 80px; overflow-y: auto; opacity: 0.8;
+        }
+        .health-ai-summary { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }
 
         /* Inline action buttons in chat messages */
         .inline-action-btn {
@@ -748,7 +869,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             margin-right: 10px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        footer { text-align: center; padding: 20px; opacity: 0.6; font-size: 0.9em; }
+        footer { text-align: center; padding: 20px; opacity: 0.6; font-size: 0.9em; display: none; }
+        .tab-footer { text-align: center; padding: 16px 10px; opacity: 0.5; font-size: 0.82em; margin-top: 12px; }
 
         /* My Day Dashboard */
         .day-cards { display: flex; gap: 14px; margin-bottom: 20px; }
@@ -811,6 +933,36 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .brief-me-btn:hover { transform: scale(1.02); }
         .brief-me-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .hero-btn-row { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; max-width: 820px; margin-left: auto; margin-right: auto; }
+        .hero-btn-row .brief-me-btn { margin: 0; flex: 1; }
+        .focus-btn {
+            flex: 1;
+            padding: 16px 32px;
+            background: linear-gradient(90deg, #E8590C, #FFB900);
+            border: none;
+            color: #fff;
+            font-size: 1.15em;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .focus-btn:hover { transform: scale(1.02); }
+        .focus-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .tomorrow-btn {
+            flex: 1;
+            padding: 16px 32px;
+            background: linear-gradient(90deg, #6B21A8, #A855F7);
+            border: none;
+            color: #fff;
+            font-size: 1.15em;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .tomorrow-btn:hover { transform: scale(1.02); }
+        .tomorrow-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .day-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
         .day-action-btn {
             background: rgba(255,255,255,0.08);
@@ -1118,6 +1270,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             font-weight: bold;
             margin-bottom: 20px;
             letter-spacing: 1px;
+            text-align: center;
         }
         .auditor-upload-zone {
             text-align: center;
@@ -1483,37 +1636,69 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         <div class="warmup-time" id="warmupTime"></div>
     </div>
 
-    <div class="container">
-        <header>
-            <div class="logos">
-                <img class="surface-logo" src="/logos/surface-logo.png" alt="Microsoft Surface" onerror="this.style.display='none'">
-                <div class="logo-divider"></div>
-                <img class="copilot-logo" src="/logos/copilot-logo.avif" alt="Copilot+ PC" onerror="this.style.display='none'">
-            </div>
-            <h1>Local NPU AI Assistant</h1>
-            <div class="header-status-row">
-                <span class="badge">Powered by Intel Core Ultra NPU</span>
-                <span class="offline-badge" id="offlineBadge">Online</span>
-                <button class="net-toggle-btn net-toggle-off" id="goOfflineBtn" title="Disable Wi-Fi">&#9992;&#65039; Go Offline</button>
-                <button class="net-toggle-btn net-toggle-on" id="goOnlineBtn" title="Enable Wi-Fi">&#128246; Go Online</button>
-                <div class="model-selector" style="margin:0;">
-                    <label for="modelSelect">Model:</label>
-                    <select id="modelSelect">
-                        <option value="phi-4-mini">Phi-4 Mini (NPU)</option>
-                    </select>
-                </div>
-            </div>
-        </header>
+    <!-- Mobile hamburger (hidden on desktop) -->
+    <button class="mobile-hamburger" id="mobileHamburger" aria-label="Open menu">&#9776;</button>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-        <div class="tabs">
-            <button class="tab-btn active" id="dayTabBtn">My Day</button>
-            <button class="tab-btn" id="chatTabBtn">AI Agent</button>
-            <button class="tab-btn" id="auditorTabBtn">&#128274; Auditor<span style="display:block;font-size:0.6em;opacity:0.45;margin-top:1px;font-weight:normal;">Clean Room</span></button>
-            <button class="tab-btn" id="idTabBtn">ID Verification<span style="display:block;font-size:0.6em;opacity:0.45;margin-top:1px;font-weight:normal;">Healthcare &amp; Government</span></button>
+    <div class="app-shell">
+      <!-- ── Sidebar ── -->
+      <aside class="sidebar" id="appSidebar">
+        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">&#9776;</button>
+        <div class="sidebar-brand">
+          <img class="brand-logo-surface" src="/logos/surface-logo.png" alt="Microsoft Surface" onerror="this.style.display='none'">
+          <img class="brand-logo-copilot" src="/logos/copilot-logo.avif" alt="Copilot+ PC" onerror="this.style.display='none'">
+        </div>
+
+        <nav class="sidebar-nav">
+          <a class="sidebar-nav-item active" data-tab="chat">
+            <span class="nav-icon">&#129302;</span>
+            <span class="sidebar-label">AI Agent<span class="sidebar-nav-sub">Chat &amp; Tooling with Phi</span></span>
+          </a>
+          <a class="sidebar-nav-item" data-tab="day">
+            <span class="nav-icon">&#9728;&#65039;</span>
+            <span class="sidebar-label">My Day<span class="sidebar-nav-sub">AI Chief of Staff</span></span>
+          </a>
+          <a class="sidebar-nav-item" data-tab="auditor">
+            <span class="nav-icon">&#128274;</span>
+            <span class="sidebar-label">Auditor<span class="sidebar-nav-sub">Clean Room</span></span>
+          </a>
+          <a class="sidebar-nav-item" data-tab="id">
+            <span class="nav-icon">&#127380;</span>
+            <span class="sidebar-label">ID Verification<span class="sidebar-nav-sub">Banking &amp; Government</span></span>
+          </a>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span class="badge" style="text-align:center;">&#9889; Intel Core Ultra NPU</span>
+          <span class="offline-badge" id="offlineBadge">Online</span>
+          <div class="sidebar-footer-controls">
+            <div class="sidebar-footer-label">Network</div>
+            <button class="net-toggle-btn net-toggle-off" id="goOfflineBtn" title="Disable Wi-Fi">&#9992;&#65039; Go Offline</button>
+            <button class="net-toggle-btn net-toggle-on" id="goOnlineBtn" title="Enable Wi-Fi">&#128246; Go Online</button>
+            <div class="model-selector" style="margin:0;">
+              <label for="modelSelect">Model:</label>
+              <select id="modelSelect">
+                <option value="phi-4-mini">Phi-4 Mini (NPU)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ── Main Content ── -->
+      <main class="main-content">
+        <div class="container">
+        <!-- Hidden tab buttons (preserve IDs for switchToTab backward compat) -->
+        <div class="tabs" style="display:none;">
+            <button class="tab-btn" id="dayTabBtn">My Day</button>
+            <button class="tab-btn active" id="chatTabBtn">AI Agent</button>
+            <button class="tab-btn" id="auditorTabBtn">&#128274; Auditor</button>
+            <button class="tab-btn" id="idTabBtn">ID Verification</button>
         </div>
 
         <!-- My Day Tab -->
-        <div id="day-tab" class="tab-content active">
+        <div id="day-tab" class="tab-content">
+            <div class="auditor-header">&#9728;&#65039; MY DAY</div>
 
             <!-- Data Summary Cards -->
             <div class="day-cards">
@@ -1540,8 +1725,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Brief Me Button -->
-            <button class="brief-me-btn" id="briefMeBtn">&#9728;&#65039; Brief Me</button>
+            <!-- Hero Action Buttons -->
+            <div class="hero-btn-row">
+                <button class="brief-me-btn" id="briefMeBtn">&#9728;&#65039; Brief Me</button>
+                <button class="focus-btn" id="focusBtn">&#127919; Top 3 Focus</button>
+                <button class="tomorrow-btn" id="tomorrowBtn">&#128302; Tomorrow</button>
+            </div>
 
             <!-- Secondary Action Buttons -->
             <div class="day-actions">
@@ -1565,10 +1754,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 </div>
             </div>
 
+            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
         </div>
 
         <!-- Agent Chat Tab -->
-        <div id="chat-tab" class="tab-content">
+        <div id="chat-tab" class="tab-content active">
+          <div class="auditor-header">&#129302; AI AGENT</div>
           <div class="agent-chat-layout">
 
             <!-- Suggestion chips (directly under tabs) -->
@@ -1589,6 +1780,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 <button class="suggestion-chip" data-action="summarize-doc">
                   <span class="chip-icon">&#128221;</span>
                   <span>Summarize a Document</span>
+                </button>
+                <button class="suggestion-chip" data-action="device-health">
+                  <span class="chip-icon">&#128737;</span>
+                  <span>Device Health</span>
                 </button>
               </div>
             </div>
@@ -1653,14 +1848,15 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <button id="qpSaveSummary" style="display:none;"></button>
             <span id="agentFileName" style="display:none;"></span>
 
+            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
           </div>
         </div>
 
         <!-- Clean Room Auditor Tab -->
         <div id="auditor-tab" class="tab-content">
+            <div class="auditor-header">&#128274; CLEAN ROOM AUDITOR</div>
             <!-- State 1: Upload Zone -->
             <div id="auditorUploadZone" class="auditor-upload-zone">
-                <div class="auditor-header">&#128274; CLEAN ROOM AUDITOR</div>
                 <div class="auditor-dropzone" id="auditorDropzone">
                     <div class="dropzone-icon">&#128737;&#65039;</div>
                     <div class="dropzone-title">Drop a confidential document</div>
@@ -1678,7 +1874,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             <!-- State 2: Document Staged -->
             <div id="auditorStaged" class="auditor-staged" style="display:none;">
-                <div class="auditor-header">&#128274; CLEAN ROOM AUDITOR</div>
                 <div class="auditor-doc-card">
                     <div class="doc-card-header">
                         <span class="doc-icon">&#128196;</span>
@@ -1704,7 +1899,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             <!-- State 3: Analysis Results -->
             <div id="auditorResults" class="auditor-results" style="display:none;">
-                <div class="auditor-header">&#128274; CLEAN ROOM AUDITOR</div>
                 <div class="auditor-doc-summary" id="auditorResultsDocSummary"></div>
 
                 <!-- Processing Log (verbose mode for demo) -->
@@ -1725,18 +1919,13 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     <button class="auditor-action-btn secondary" onclick="resetAuditor()">&#128196; Load Different Doc</button>
                 </div>
             </div>
+            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
         </div>
 
         <!-- ID Verification Tab -->
         <div id="id-tab" class="tab-content">
-            <div class="privacy-note">
-                <span class="privacy-icon">&#128274;</span>
-                <div>
-                    <strong>100% Local Processing</strong><br>
-                    Your ID image and data never leave this device. Camera capture, OCR, and AI analysis all run locally.
-                </div>
-            </div>
-            
+            <div class="auditor-header">&#127380; ID VERIFICATION</div>
+
             <div class="camera-section">
                 <div class="camera-selector" style="margin-bottom: 15px;">
                     <label for="cameraSelect" style="margin-right: 10px;">Camera:</label>
@@ -1793,12 +1982,23 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 <div id="idFields"></div>
                 <div id="idNotes" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);"></div>
             </div>
+
+            <div class="privacy-note" style="margin-top: 20px;">
+                <span class="privacy-icon">&#128274;</span>
+                <div>
+                    <strong>100% Local Processing</strong><br>
+                    Your ID image and data never leave this device. Camera capture, OCR, and AI analysis all run locally.
+                </div>
+            </div>
+            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
         </div>
 
         <footer>
             Microsoft Surface + Copilot+ PC - Phi-4 Mini on Intel Core Ultra NPU - All processing happens locally
         </footer>
-    </div>
+        </div><!-- /.container -->
+      </main>
+    </div><!-- /.app-shell -->
 
     <script>
         // --- Warmup overlay: poll /health until model is ready ---
@@ -1848,6 +2048,11 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
                 document.getElementById(btnId).classList.add("active");
                 document.getElementById(tabId).classList.add("active");
+                // Sync sidebar nav active state
+                var tabKey = tabId.replace("-tab", "");
+                document.querySelectorAll(".sidebar-nav-item").forEach(function(item) {
+                    item.classList.toggle("active", item.getAttribute("data-tab") === tabKey);
+                });
             }
 
             function showTabToast(text) {
@@ -1880,6 +2085,60 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 switchToTab("auditor-tab", "auditorTabBtn");
                 showTabToast("Same local AI \u2014 now in clean room mode");
             });
+
+            // === Sidebar logic ===
+            var sidebar = document.getElementById("appSidebar");
+            var sidebarToggle = document.getElementById("sidebarToggle");
+            var backdrop = document.getElementById("sidebarBackdrop");
+            var hamburger = document.getElementById("mobileHamburger");
+
+            // Restore collapsed state from localStorage
+            if (localStorage.getItem("sidebarCollapsed") === "true") {
+                sidebar.classList.add("collapsed");
+            }
+
+            function toggleSidebar() {
+                sidebar.classList.toggle("collapsed");
+                localStorage.setItem("sidebarCollapsed", sidebar.classList.contains("collapsed"));
+            }
+            sidebarToggle.addEventListener("click", toggleSidebar);
+
+            // Sidebar nav item clicks
+            var tabMap = {
+                day:     { tabId: "day-tab",     btnId: "dayTabBtn",     toast: "Same local AI \u2014 now reading your day" },
+                chat:    { tabId: "chat-tab",    btnId: "chatTabBtn",    toast: "Same local AI \u2014 now with execution tools" },
+                auditor: { tabId: "auditor-tab", btnId: "auditorTabBtn", toast: "Same local AI \u2014 now in clean room mode" },
+                id:      { tabId: "id-tab",      btnId: "idTabBtn",     toast: "Same local AI \u2014 now verifying identity" }
+            };
+            document.querySelectorAll(".sidebar-nav-item").forEach(function(item) {
+                item.addEventListener("click", function() {
+                    var key = item.getAttribute("data-tab");
+                    var info = tabMap[key];
+                    if (info) {
+                        switchToTab(info.tabId, info.btnId);
+                        showTabToast(info.toast);
+                    }
+                    // Close mobile overlay
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove("mobile-open");
+                        backdrop.classList.remove("visible");
+                    }
+                });
+            });
+
+            // Mobile hamburger
+            if (hamburger) {
+                hamburger.addEventListener("click", function() {
+                    sidebar.classList.add("mobile-open");
+                    backdrop.classList.add("visible");
+                });
+            }
+            if (backdrop) {
+                backdrop.addEventListener("click", function() {
+                    sidebar.classList.remove("mobile-open");
+                    backdrop.classList.remove("visible");
+                });
+            }
 
             // === My Day handlers ===
             // --- My Day: counts + peek windows ---
@@ -2002,7 +2261,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 progress.style.display = "block";
                 progress.innerHTML = '<div class="step-line active"><span class="spinner"></span> Starting...</div>';
                 result.style.display = "none";
-                document.getElementById("briefMeBtn").disabled = true;
+                document.getElementById("briefMeBtn").disabled = true; document.getElementById("focusBtn").disabled = true; document.getElementById("tomorrowBtn").disabled = true;
 
                 fetch(url, {
                     method: "POST",
@@ -2026,7 +2285,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         else if (evt.type === "briefing") {
                             progress.style.display = "none";
                             result.style.display = "block";
-                            document.getElementById("briefMeBtn").disabled = false;
+                            document.getElementById("briefMeBtn").disabled = false; document.getElementById("focusBtn").disabled = false; document.getElementById("tomorrowBtn").disabled = false;
 
                             var text = evt.text || "";
                             // Split into executive summary and details
@@ -2066,7 +2325,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         }
                         else if (evt.type === "error") {
                             progress.innerHTML += '<div class="step-line" style="color:#FF4444;">Error: ' + evt.message + '</div>';
-                            document.getElementById("briefMeBtn").disabled = false;
+                            document.getElementById("briefMeBtn").disabled = false; document.getElementById("focusBtn").disabled = false; document.getElementById("tomorrowBtn").disabled = false;
                         }
                     }
 
@@ -2074,7 +2333,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         reader.read().then(function(chunk) {
                             if (chunk.done) {
                                 if (buffer.trim()) processLine(buffer);
-                                document.getElementById("briefMeBtn").disabled = false;
+                                document.getElementById("briefMeBtn").disabled = false; document.getElementById("focusBtn").disabled = false; document.getElementById("tomorrowBtn").disabled = false;
                                 return;
                             }
                             buffer += decoder.decode(chunk.value);
@@ -2088,13 +2347,15 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 })
                 .catch(function(err) {
                     progress.innerHTML += '<div style="color:#FF4444;">Connection error: ' + err.message + '</div>';
-                    document.getElementById("briefMeBtn").disabled = false;
+                    document.getElementById("briefMeBtn").disabled = false; document.getElementById("focusBtn").disabled = false; document.getElementById("tomorrowBtn").disabled = false;
                 });
             }
 
             document.getElementById("briefMeBtn").addEventListener("click", function() { runBriefing("/brief-me"); });
             document.getElementById("triageBtn").addEventListener("click", function() { runBriefing("/triage-inbox"); });
             document.getElementById("prepBtn").addEventListener("click", function() { runBriefing("/prep-next-meeting"); });
+            document.getElementById("focusBtn").addEventListener("click", function() { runBriefing("/top-3-focus"); });
+            document.getElementById("tomorrowBtn").addEventListener("click", function() { runBriefing("/tomorrow-preview"); });
 
             // Agent chat handlers
             document.getElementById("sendBtn").addEventListener("click", sendMessage);
@@ -2154,6 +2415,116 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 });
             }
 
+            function runDeviceHealth() {
+                addMessage("user", "Run a device health check on this machine");
+                var assistantDiv = addMessage("assistant", '<div class="health-checks-container" id="healthChecksLive"></div>');
+                var contentDiv = assistantDiv.querySelector(".content");
+                var checksDiv = document.getElementById("healthChecksLive");
+                checksDiv.innerHTML = '<div style="margin-bottom:8px;font-weight:600;">&#128737; Device Health Check</div>';
+
+                fetch("/demo/device-health", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ model: currentModel })
+                })
+                .then(function(r) { return r.body.getReader(); })
+                .then(function(reader) {
+                    var decoder = new TextDecoder();
+                    var buffer = "";
+
+                    function processLine(line) {
+                        line = line.trim();
+                        if (!line) return;
+                        try { var evt = JSON.parse(line); } catch(e) { return; }
+
+                        if (evt.type === "check-start") {
+                            var entry = document.createElement("div");
+                            entry.className = "health-check-entry";
+                            entry.id = "hc-" + evt.id;
+                            entry.innerHTML = '<div class="health-check-name">' + evt.icon + ' ' + evt.name +
+                                ' <span class="spinner" style="display:inline-block;width:12px;height:12px;"></span></div>' +
+                                '<div class="health-check-cmd">&gt; ' + evt.cmd + '</div>' +
+                                '<div class="health-check-output" id="hc-out-' + evt.id + '"></div>';
+                            checksDiv.appendChild(entry);
+                        } else if (evt.type === "check-done") {
+                            var el = document.getElementById("hc-" + evt.id);
+                            if (el) {
+                                el.className = "health-check-entry done";
+                                el.querySelector(".spinner").style.display = "none";
+                                var outEl = document.getElementById("hc-out-" + evt.id);
+                                if (outEl) outEl.textContent = evt.output;
+                            }
+                        } else if (evt.type === "check-error") {
+                            var el2 = document.getElementById("hc-" + evt.id);
+                            if (el2) {
+                                el2.className = "health-check-entry error";
+                                el2.querySelector(".spinner").style.display = "none";
+                                var outEl2 = document.getElementById("hc-out-" + evt.id);
+                                if (outEl2) { outEl2.textContent = evt.output; outEl2.style.color = "#FF4444"; }
+                            }
+                        } else if (evt.type === "status") {
+                            var statusDiv = document.createElement("div");
+                            statusDiv.style.cssText = "margin:8px 0;opacity:0.6;font-size:0.85em;";
+                            statusDiv.innerHTML = '<span class="spinner" style="display:inline-block;width:12px;height:12px;"></span> ' + evt.text;
+                            statusDiv.id = "healthAiStatus";
+                            checksDiv.appendChild(statusDiv);
+                        } else if (evt.type === "result") {
+                            var st = document.getElementById("healthAiStatus");
+                            if (st) st.remove();
+                            var summaryDiv = document.createElement("div");
+                            summaryDiv.className = "health-ai-summary";
+                            var html = '<div style="font-weight:600;margin-bottom:6px;">&#129302; AI Assessment</div>' +
+                                mdToHtml(evt.text) +
+                                '<div class="tool-time" style="margin-top:6px;">&#9201; ' + evt.time + 's on NPU</div>';
+                            // Add Learn More buttons for findings
+                            if (evt.findings && evt.findings.length > 0) {
+                                html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">' +
+                                    '<div style="font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;opacity:0.4;margin-bottom:6px;">Learn More</div>';
+                                evt.findings.forEach(function(f) {
+                                    html += '<button class="health-learn-btn" data-question="' +
+                                        f.q.replace(/"/g, '&quot;') + '"' +
+                                        ' style="display:inline-block;margin:3px 4px 3px 0;padding:4px 10px;font-size:0.78em;' +
+                                        'background:rgba(0,188,242,0.1);border:1px solid rgba(0,188,242,0.25);border-radius:12px;' +
+                                        'color:#00BCF2;cursor:pointer;">' + f.label + ' &rarr;</button>';
+                                });
+                                html += '</div>';
+                            }
+                            summaryDiv.innerHTML = html;
+                            checksDiv.appendChild(summaryDiv);
+                            // Bind Learn More click handlers
+                            summaryDiv.querySelectorAll(".health-learn-btn").forEach(function(btn) {
+                                btn.addEventListener("click", function() {
+                                    var q = this.getAttribute("data-question");
+                                    document.getElementById("userInput").value = q;
+                                    sendMessage();
+                                });
+                            });
+                        } else if (evt.type === "error") {
+                            checksDiv.innerHTML += '<div style="color:#FF4444;margin-top:8px;">Error: ' + evt.message + '</div>';
+                        }
+                        document.getElementById("chatContainer").scrollTop = document.getElementById("chatContainer").scrollHeight;
+                    }
+
+                    function read() {
+                        reader.read().then(function(chunk) {
+                            if (chunk.done) {
+                                if (buffer.trim()) processLine(buffer);
+                                return;
+                            }
+                            buffer += decoder.decode(chunk.value);
+                            var lines = buffer.split("\n");
+                            buffer = lines.pop();
+                            lines.forEach(processLine);
+                            read();
+                        });
+                    }
+                    read();
+                })
+                .catch(function(err) {
+                    checksDiv.innerHTML += '<div style="color:#FF4444;">Error: ' + err + '</div>';
+                });
+            }
+
             // Suggestion chip handlers
             document.querySelectorAll(".suggestion-chip[data-action]").forEach(function(chip) {
                 chip.addEventListener("click", function() {
@@ -2169,6 +2540,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             "List the files in the Demo folder.");
                     } else if (action === "summarize-doc") {
                         document.getElementById("attachBtn").click();
+                    } else if (action === "device-health") {
+                        runDeviceHealth();
                     }
                 });
             });
@@ -2428,6 +2801,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             '<button class="suggestion-chip" data-action="analyze-strategy"><span class="chip-icon">&#128196;</span><span>Analyze Strategy</span></button>' +
                             '<button class="suggestion-chip" data-action="list-documents"><span class="chip-icon">&#128193;</span><span>List Documents</span></button>' +
                             '<button class="suggestion-chip" data-action="summarize-doc"><span class="chip-icon">&#128221;</span><span>Summarize a Document</span></button>' +
+                            '<button class="suggestion-chip" data-action="device-health"><span class="chip-icon">&#128737;</span><span>Device Health</span></button>' +
                         '</div></div>';
                     document.getElementById("chatContainer").insertAdjacentHTML("afterend", chipsHtml);
                     // Re-bind chip handlers
@@ -2445,6 +2819,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                     "List the files in the Demo folder.");
                             } else if (action === "summarize-doc") {
                                 document.getElementById("attachBtn").click();
+                            } else if (action === "device-health") {
+                                runDeviceHealth();
                             }
                         });
                     });
@@ -2697,7 +3073,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     return true;
                 }
                 if (!isDeviceOffline()) {
-                    alert("🔒 Clean Room Security Protocol\\n\\nConfidential documents can only be loaded when the device is OFFLINE.\\n\\nPlease click 'Go Offline' in the header to disconnect from the network, then try again.\\n\\nThis ensures zero data egress during analysis.");
+                    alert("🔒 Clean Room Security Protocol\\n\\nConfidential documents can only be loaded when the device is OFFLINE.\\n\\nPlease click 'Go Offline' in the sidebar to disconnect from the network, then try again.\\n\\nThis ensures zero data egress during analysis.");
                     return false;
                 }
                 return true;
@@ -3943,6 +4319,226 @@ def demo_list_documents():
     return Response(generate(), mimetype='text/plain')
 
 
+@app.route('/demo/device-health', methods=['POST'])
+def demo_device_health():
+    """Device health check — deterministic PowerShell collectors + AI summary."""
+    model = DEFAULT_MODEL
+
+    HEALTH_CHECKS = [
+        {
+            "id": "disk",
+            "name": "Disk Space",
+            "icon": "\U0001f4be",
+            "cmd": 'Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object DeviceID, @{N="SizeGB";E={[math]::Round($_.Size/1GB,1)}}, @{N="FreeGB";E={[math]::Round($_.FreeSpace/1GB,1)}}, @{N="UsedPct";E={[math]::Round(($_.Size-$_.FreeSpace)/$_.Size*100,0)}} | Format-List',
+        },
+        {
+            "id": "battery",
+            "name": "Battery",
+            "icon": "\U0001f50b",
+            "cmd": 'Get-CimInstance Win32_Battery | Select-Object @{N="ChargePercent";E={$_.EstimatedChargeRemaining}}, @{N="Status";E={switch($_.BatteryStatus){1{"Discharging"}2{"AC Power"}default{$_.BatteryStatus}}}} | Format-List',
+        },
+        {
+            "id": "system",
+            "name": "System Info",
+            "icon": "\U0001f4bb",
+            "cmd": 'Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, @{N="BootTime";E={$_.LastBootUpTime.ToString("yyyy-MM-dd HH:mm")}}, @{N="UptimeDays";E={[math]::Round(((Get-Date)-$_.LastBootUpTime).TotalDays,1)}} | Format-List',
+        },
+        {
+            "id": "network",
+            "name": "Network Adapters",
+            "icon": "\U0001f310",
+            "cmd": 'Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object Name, InterfaceDescription, LinkSpeed, Status | Format-List',
+        },
+        {
+            "id": "security",
+            "name": "Defender Antivirus",
+            "icon": "\U0001f6e1\ufe0f",
+            "cmd": 'Get-MpComputerStatus | Select-Object AntivirusEnabled, RealTimeProtectionEnabled, @{N="SignatureAge";E={(New-TimeSpan $_.AntivirusSignatureLastUpdated (Get-Date)).Days.ToString() + " days"}}, @{N="LastScan";E={$_.QuickScanEndTime.ToString("yyyy-MM-dd HH:mm")}} | Format-List',
+        },
+        {
+            "id": "firewall",
+            "name": "Firewall Profiles",
+            "icon": "\U0001f9f1",
+            "cmd": 'Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | Format-List',
+        },
+        {
+            "id": "ports",
+            "name": "Listening Ports",
+            "icon": "\U0001f50c",
+            "cmd": 'Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, @{N="Process";E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | Sort-Object LocalPort -Unique | Select-Object -First 12 | Format-Table -AutoSize | Out-String',
+        },
+        {
+            "id": "updates",
+            "name": "Windows Updates",
+            "icon": "\U0001f504",
+            "cmd": 'Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 3 HotFixID, InstalledOn, Description | Format-List',
+        },
+        {
+            "id": "events",
+            "name": "Recent System Errors",
+            "icon": "\u26a0\ufe0f",
+            "cmd": 'Get-WinEvent -FilterHashtable @{LogName="System";Level=1,2,3} -MaxEvents 5 -ErrorAction SilentlyContinue | Select-Object TimeCreated, LevelDisplayName, @{N="Source";E={$_.ProviderName}}, @{N="Msg";E={$_.Message.Substring(0,[math]::Min(120,$_.Message.Length))}} | Format-List',
+        },
+    ]
+
+    def generate():
+        start = _time.time()
+        results = []
+
+        for check in HEALTH_CHECKS:
+            # Signal start
+            yield json.dumps({
+                "type": "check-start",
+                "id": check["id"],
+                "name": check["name"],
+                "icon": check["icon"],
+                "cmd": check["cmd"],
+            }) + "\n"
+
+            try:
+                proc = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-Command", check["cmd"]],
+                    capture_output=True, text=True, timeout=10
+                )
+                output = (proc.stdout or "").strip()
+                if proc.returncode != 0 and proc.stderr:
+                    output = output or proc.stderr.strip()
+                if not output:
+                    output = "(no data available)"
+                # Truncate per-check output
+                if len(output) > 350:
+                    output = output[:350] + "..."
+
+                results.append(f"{check['name']}:\n{output}")
+                yield json.dumps({
+                    "type": "check-done",
+                    "id": check["id"],
+                    "output": output,
+                }) + "\n"
+
+            except subprocess.TimeoutExpired:
+                results.append(f"{check['name']}: TIMEOUT")
+                yield json.dumps({
+                    "type": "check-error",
+                    "id": check["id"],
+                    "output": "Command timed out (10s)",
+                }) + "\n"
+            except Exception as e:
+                results.append(f"{check['name']}: ERROR - {str(e)}")
+                yield json.dumps({
+                    "type": "check-error",
+                    "id": check["id"],
+                    "output": str(e),
+                }) + "\n"
+
+        # Pre-compute numerical ratings (don't ask AI to do math)
+        yield json.dumps({"type": "status", "text": "AI analyzing health data..."}) + "\n"
+
+        health_data = "\n\n".join(results)
+        pre_ratings = []
+        # Disk usage
+        m = re.search(r'UsedPct\s*:\s*(\d+)', health_data)
+        if m:
+            pct = int(m.group(1))
+            if pct >= 90: pre_ratings.append(f"Disk: FAIL — {pct}% used (over 90% threshold)")
+            elif pct >= 80: pre_ratings.append(f"Disk: WARN — {pct}% used (over 80% threshold)")
+            else: pre_ratings.append(f"Disk: PASS — {pct}% used (healthy)")
+        # Uptime
+        m = re.search(r'UptimeDays\s*:\s*([\d.]+)', health_data)
+        if m:
+            days = float(m.group(1))
+            if days >= 30: pre_ratings.append(f"Uptime: FAIL — {days} days (over 30-day limit, reboot urgently)")
+            elif days >= 7: pre_ratings.append(f"Uptime: WARN — {days} days without reboot (7-day policy exceeded)")
+            else: pre_ratings.append(f"Uptime: PASS — {days} days (within 7-day reboot policy)")
+        # AV signature age
+        m = re.search(r'SignatureAge\s*:\s*(\d+)\s*days', health_data)
+        if m:
+            age = int(m.group(1))
+            if age >= 2: pre_ratings.append(f"AV Signatures: WARN — {age} days old")
+            else: pre_ratings.append(f"AV Signatures: PASS — current ({age} days)")
+        # Battery
+        m = re.search(r'ChargePercent\s*:\s*(\d+)', health_data)
+        if m:
+            charge = int(m.group(1))
+            if charge <= 10: pre_ratings.append(f"Battery: FAIL — {charge}%")
+            elif charge <= 20: pre_ratings.append(f"Battery: WARN — {charge}%")
+            else: pre_ratings.append(f"Battery: PASS — {charge}%")
+
+        pre_text = "\n".join(pre_ratings)
+
+        # Build "Learn More" findings for WARN/FAIL items
+        findings = []
+        for r in pre_ratings:
+            if "WARN" in r or "FAIL" in r:
+                if "Disk" in r:
+                    findings.append({"label": "Disk Usage", "q": "Why is high disk usage a concern on enterprise devices and how can I free up space on Windows 11?"})
+                elif "Uptime" in r:
+                    m2 = re.search(r'([\d.]+) days', r)
+                    d = m2.group(1) if m2 else "?"
+                    findings.append({"label": "Uptime " + d + "d", "q": f"This device has been running for {d} days without a reboot. Why does enterprise IT policy require regular reboots and what security patches might be pending?"})
+                elif "AV" in r:
+                    findings.append({"label": "AV Signatures", "q": "Why are outdated antivirus signatures dangerous and how do I update Windows Defender definitions?"})
+                elif "Battery" in r:
+                    findings.append({"label": "Battery", "q": "What does critically low battery indicate about device health and battery longevity?"})
+        # Subjective checks — always include if relevant data exists
+        if "NotConfigured" in health_data:
+            findings.append({"label": "Firewall Config", "q": "The Windows Firewall profiles show NotConfigured for inbound rules. What does this mean for security and what should enterprise IT configure?"})
+        if "445" in health_data or "139" in health_data:
+            findings.append({"label": "SMB Ports 139/445", "q": "Ports 139 and 445 (SMB/NetBIOS) are listening on this device. What are the security risks of open SMB ports and should they be closed on an enterprise laptop?"})
+        if "Error" in health_data and "Smartcard" in health_data:
+            findings.append({"label": "Smartcard Errors", "q": "The system log shows recurring Smart Card Reader errors from Microsoft-Windows-Smartcard-Server. What causes this on a Surface device and how do I fix it?"})
+        elif "Error" in health_data:
+            findings.append({"label": "System Errors", "q": "The Windows System event log shows recent errors. What do these mean and should I be concerned?"})
+
+        if len(health_data) > 2800:
+            health_data = health_data[:2800]
+
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are a senior enterprise IT health agent. "
+                        "Write a 2-3 sentence executive summary highlighting what is good "
+                        "and what needs attention. Be specific — mention port numbers, "
+                        "error sources, and uptime days. "
+                        "Then list all areas with their PASS/WARN/FAIL rating. "
+                        "The pre-computed ratings below are CORRECT — use them exactly. "
+                        "You must also rate: Firewall (NotConfigured inbound=FAIL), "
+                        "Ports (139/445 SMB/NetBIOS open=WARN), System Errors. "
+                        "End with one PRIORITY ACTION."
+                    )},
+                    {"role": "user", "content": (
+                        f"Pre-computed ratings (use these exactly):\n{pre_text}\n\n"
+                        f"Raw scan data:\n{health_data}\n\nHealth assessment:"
+                    )},
+                ],
+                max_tokens=512,
+                temperature=0.3,
+            )
+            summary = (response.choices[0].message.content or "").strip()
+            total = round(_time.time() - start, 1)
+
+            AGENT_AUDIT_LOG.append({
+                "timestamp": _time.strftime("%H:%M:%S"),
+                "tool": "exec",
+                "arguments": {"command": "Device Health Check (9 checks)"},
+                "success": True,
+                "time": total,
+            })
+
+            yield json.dumps({
+                "type": "result",
+                "text": summary,
+                "time": total,
+                "findings": findings,
+            }) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
 # Confidential file patterns for demo (files that require approval)
 CONFIDENTIAL_PATTERNS = {
     'contract': {'label': 'Contract', 'icon': '📜'},
@@ -5135,6 +5731,120 @@ def prep_next_meeting():
             result = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "briefing", "text": result, "time": total}) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/top-3-focus', methods=['POST'])
+def top_3_focus():
+    """Single-step: analyze today's data and return the top 3 priorities."""
+    model = DEFAULT_MODEL
+
+    def generate():
+        start = _time.time()
+        yield json.dumps({"type": "status", "message": "Reading your day..."}) + "\n"
+        events = parse_ics(os.path.join(MY_DAY_DIR, 'calendar.ics'))
+        tasks = parse_tasks_csv(os.path.join(MY_DAY_DIR, 'tasks.csv'))
+        emails = parse_inbox(MY_DAY_INBOX)
+
+        yield json.dumps({"type": "status", "message": "Identifying priorities..."}) + "\n"
+        data_text = compress_for_briefing(events, tasks, emails)
+
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are a chief of staff. Analyze the user's calendar, tasks, and emails. "
+                        "Identify the TOP 3 things they should focus on RIGHT NOW. "
+                        "For each item:\n"
+                        "1. A clear action title\n"
+                        "2. WHY it's urgent (1 sentence)\n"
+                        "3. Time needed (estimate)\n"
+                        "Rank by impact and urgency. Be direct and decisive."
+                    )},
+                    {"role": "user", "content": data_text},
+                ],
+                max_tokens=400,
+                temperature=0.3,
+            )
+            result = (response.choices[0].message.content or "").strip()
+            total = round(_time.time() - start, 1)
+            yield json.dumps({"type": "briefing", "text": result, "time": total,
+                              "counts": {"events": len(events), "tasks": len(tasks), "emails": len(emails)}}) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/tomorrow-preview', methods=['POST'])
+def tomorrow_preview():
+    """Single-step: high-level overview of tomorrow's schedule."""
+    model = DEFAULT_MODEL
+
+    def generate():
+        start = _time.time()
+        yield json.dumps({"type": "status", "message": "Reading tomorrow's calendar..."}) + "\n"
+        all_events = parse_ics(os.path.join(MY_DAY_DIR, 'calendar.ics'))
+        all_tasks = parse_tasks_csv(os.path.join(MY_DAY_DIR, 'tasks.csv'))
+
+        # Filter for tomorrow (Feb 8, 2026)
+        tomorrow_events = [e for e in all_events if e.get('date', '') == '2026-02-08']
+        tomorrow_tasks = [t for t in all_tasks if t.get('Due Date', '') == '2026-02-08']
+
+        if not tomorrow_events and not tomorrow_tasks:
+            yield json.dumps({"type": "error", "message": "No events or tasks found for tomorrow."}) + "\n"
+            return
+
+        yield json.dumps({"type": "status", "message": f"Found {len(tomorrow_events)} events and {len(tomorrow_tasks)} tasks for tomorrow..."}) + "\n"
+
+        # Build compressed data for tomorrow
+        lines = ['TOMORROW: Sun Feb 8 2026\n']
+        lines.append(f'CALENDAR ({len(tomorrow_events)} events):')
+        for ev in tomorrow_events:
+            t = ev.get('time', '?')
+            s = ev.get('summary', '?')
+            loc = ev.get('location', '')
+            desc = ev.get('description', '')[:150]
+            lines.append(f'- {t} {s}' + (f' @ {loc}' if loc else '') + f'\n  {desc}')
+
+        lines.append(f'\nTASKS ({len(tomorrow_tasks)} items):')
+        for t in tomorrow_tasks:
+            prio = t.get('Priority', 'Med')
+            name = t.get('Task', '?')
+            notes = t.get('Notes', '')[:80]
+            lines.append(f'- [{prio}] {name}: {notes}')
+
+        data_text = '\n'.join(lines)
+        if len(data_text) > 1800:
+            data_text = data_text[:1800]
+
+        yield json.dumps({"type": "status", "message": "Generating tomorrow's preview..."}) + "\n"
+
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are a chief of staff. Write a PREVIEW OF TOMORROW with:\n"
+                        "1. Overview (2-3 sentences): the arc of the day, key highlights.\n"
+                        "2. TIMELINE: chronological flow of the day.\n"
+                        "3. PREP TONIGHT: things to do or pack before bed.\n"
+                        "4. HIGHLIGHTS: the most exciting parts of tomorrow.\n"
+                        "Be enthusiastic where appropriate. Be concise."
+                    )},
+                    {"role": "user", "content": data_text},
+                ],
+                max_tokens=500,
+                temperature=0.4,
+            )
+            result = (response.choices[0].message.content or "").strip()
+            total = round(_time.time() - start, 1)
+            yield json.dumps({"type": "briefing", "text": result, "time": total,
+                              "counts": {"events": len(tomorrow_events), "tasks": len(tomorrow_tasks), "emails": 0}}) + "\n"
         except Exception as e:
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
