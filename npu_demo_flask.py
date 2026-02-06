@@ -128,6 +128,24 @@ Date: January 15, 2026
 
 AGENT_AUDIT_LOG = []
 
+# --- Session stats for Local AI Savings widget ---
+SESSION_STATS = {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "inference_seconds": 0.0,
+}
+
+
+def _track_model_call(response, elapsed_seconds):
+    """Track model call stats for the savings widget."""
+    SESSION_STATS["calls"] += 1
+    SESSION_STATS["inference_seconds"] += elapsed_seconds
+    if hasattr(response, 'usage') and response.usage:
+        SESSION_STATS["input_tokens"] += response.usage.prompt_tokens or 0
+        SESSION_STATS["output_tokens"] += response.usage.completion_tokens or 0
+
+
 AGENT_SYSTEM_PROMPT = (
     'You are Phi, a helpful AI assistant running on a Windows PC. You have these tools:\n\n'
     '- read(path): VIEW or READ an existing file\n'
@@ -531,6 +549,45 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .sidebar-footer-controls .model-selector { justify-content: flex-start; margin: 0; }
         .sidebar-footer-controls .model-selector select { font-size: 0.8em; padding: 5px 10px; }
         .sidebar-footer-label { font-size: 0.78em; opacity: 0.5; margin-bottom: 2px; }
+
+        /* Local AI Savings Widget */
+        .savings-widget {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.02) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            font-size: 0.78em;
+        }
+        .savings-header {
+            font-weight: 600;
+            color: #22c55e;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+            letter-spacing: 0.02em;
+        }
+        .savings-stat {
+            color: rgba(255, 255, 255, 0.75);
+            margin: 3px 0;
+            line-height: 1.4;
+        }
+        .savings-stat-highlight {
+            color: #22c55e;
+            font-weight: 500;
+        }
+        .sidebar.collapsed .savings-widget {
+            padding: 8px;
+            text-align: center;
+        }
+        .sidebar.collapsed .savings-header,
+        .sidebar.collapsed .savings-stat:not(.savings-stat-compact) { display: none; }
+        .savings-stat-compact { display: none; }
+        .sidebar.collapsed .savings-stat-compact {
+            display: block;
+            color: #22c55e;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
 
         .main-content { flex: 1; min-width: 0; overflow-y: auto; padding: 20px; max-height: 100vh; }
 
@@ -1669,6 +1726,14 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         </nav>
 
         <div class="sidebar-footer">
+          <div class="savings-widget" id="savingsWidget">
+            <div class="savings-header">&#128994; LOCAL AI SESSION</div>
+            <div class="savings-stat" id="savingsCalls">0 calls &middot; 0 tokens</div>
+            <div class="savings-stat" id="savingsCost">&#128176; $0.00 saved vs cloud</div>
+            <div class="savings-stat" id="savingsPower">&#9889; 0 Wh local &middot; 0 Wh cloud</div>
+            <div class="savings-stat" id="savingsCO2">&#127793; 0g CO&#8322; avoided</div>
+            <div class="savings-stat savings-stat-compact" id="savingsCompact">&#128994; $0.00</div>
+          </div>
           <span class="badge" style="text-align:center;">&#9889; Intel Core Ultra NPU</span>
           <span class="offline-badge" id="offlineBadge">Online</span>
           <div class="sidebar-footer-controls">
@@ -2068,6 +2133,32 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 setTimeout(function() { toast.style.opacity = "0"; }, 2500);
                 setTimeout(function() { toast.remove(); }, 3000);
             }
+
+            // Local AI Savings Widget
+            function formatNumber(n) {
+                return n.toLocaleString("en-US");
+            }
+            function updateSavingsWidget() {
+                fetch("/session-stats")
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var callsEl = document.getElementById("savingsCalls");
+                        var costEl = document.getElementById("savingsCost");
+                        var powerEl = document.getElementById("savingsPower");
+                        var co2El = document.getElementById("savingsCO2");
+                        var compactEl = document.getElementById("savingsCompact");
+                        if (callsEl) callsEl.textContent = formatNumber(data.calls) + " calls \u00b7 " + formatNumber(data.total_tokens) + " tokens";
+                        var costStr = "$" + data.cloud_cost_saved.toFixed(2);
+                        if (costEl) costEl.innerHTML = "&#128176; " + costStr + " saved vs cloud";
+                        if (powerEl) powerEl.innerHTML = "&#9889; " + data.npu_wh.toFixed(2) + " Wh local \u00b7 " + data.cloud_wh.toFixed(1) + " Wh cloud";
+                        if (co2El) co2El.innerHTML = "&#127793; " + data.co2_avoided_g.toFixed(1) + "g CO&#8322; avoided";
+                        if (compactEl) compactEl.innerHTML = "&#128994; " + costStr;
+                    })
+                    .catch(function(e) { console.warn("Savings widget fetch failed:", e); });
+            }
+            // Initial update and auto-refresh every 5 seconds
+            updateSavingsWidget();
+            setInterval(updateSavingsWidget, 5000);
 
             document.getElementById("dayTabBtn").addEventListener("click", function() {
                 switchToTab("day-tab", "dayTabBtn");
@@ -4178,6 +4269,7 @@ def demo_meeting_agenda():
         yield json.dumps({"type": "status", "text": "Generating meeting agenda..."}) + "\n"
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4187,6 +4279,7 @@ def demo_meeting_agenda():
                 max_tokens=512,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             agenda = (response.choices[0].message.content or "").strip()
 
             # Write to file
@@ -4246,6 +4339,7 @@ def demo_analyze_strategy():
         yield json.dumps({"type": "status", "text": "Analyzing with AI..."}) + "\n"
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4255,6 +4349,7 @@ def demo_analyze_strategy():
                 max_tokens=512,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             analysis = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "result", "text": analysis, "time": total}) + "\n"
@@ -4297,6 +4392,7 @@ def demo_list_documents():
 
             yield json.dumps({"type": "status", "text": "Summarizing..."}) + "\n"
 
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4306,6 +4402,7 @@ def demo_list_documents():
                 max_tokens=256,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             summary = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({
@@ -4494,6 +4591,7 @@ def demo_device_health():
             health_data = health_data[:2800]
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4516,6 +4614,7 @@ def demo_device_health():
                 max_tokens=512,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             summary = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
 
@@ -4648,6 +4747,7 @@ def demo_review_summarize():
             yield json.dumps({"type": "status", "text": "Analyzing for risks..."}) + "\n"
 
             try:
+                _call_start = _time.time()
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
@@ -4664,6 +4764,7 @@ def demo_review_summarize():
                     max_tokens=512,
                     temperature=0.3,
                 )
+                _track_model_call(response, _time.time() - _call_start)
                 summary = (response.choices[0].message.content or "").strip()
                 total = round(_time.time() - start, 1)
                 yield json.dumps({
@@ -4715,6 +4816,7 @@ def detect_pii():
         yield json.dumps({"type": "status", "text": "Scanning for PII..."}) + "\n"
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4724,6 +4826,7 @@ def detect_pii():
                 max_tokens=512,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             analysis = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "result", "text": analysis, "time": total}) + "\n"
@@ -4762,6 +4865,7 @@ def summarize_doc():
         yield json.dumps({"type": "status", "text": f"Analyzing {len(content.split())} words with AI..."}) + "\n"
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4777,6 +4881,7 @@ def summarize_doc():
                 max_tokens=512,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             summary = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "summary", "text": summary, "time": total}) + "\n"
@@ -4799,6 +4904,7 @@ def chat():
         start = _time.time()
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -4808,6 +4914,7 @@ def chat():
                 max_tokens=1024,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             model_output = (response.choices[0].message.content or "").strip()
             think_time = round(_time.time() - start, 1)
             print(f"[DEBUG] Model returned {len(model_output)} chars in {think_time}s")
@@ -4855,12 +4962,14 @@ def chat():
                     )},
                 ]
                 try:
+                    _call_start2 = _time.time()
                     followup = client.chat.completions.create(
                         model=model,
                         messages=followup_msgs,
                         max_tokens=512,
                         temperature=0.3,
                     )
+                    _track_model_call(followup, _time.time() - _call_start2)
                     final_text = (followup.choices[0].message.content or "").strip()
                 except Exception as e:
                     final_text = f"Tool executed successfully but the AI summary failed: {e}"
@@ -5118,6 +5227,7 @@ For each risk, provide:
             try:
                 full_prompt = f"{analysis_prompt}\n\nCONTRACT TEXT:\n{text[:3000]}"
 
+                _call_start = _time.time()
                 response = client.chat.completions.create(
                     model=model,
                     messages=[
@@ -5127,6 +5237,7 @@ For each risk, provide:
                     max_tokens=800,
                     temperature=0.3
                 )
+                _track_model_call(response, _time.time() - _call_start)
                 ai_response = (response.choices[0].message.content or "").strip()
 
                 analysis_time = round(_time.time() - analysis_start, 1)
@@ -5186,6 +5297,7 @@ For each risk, provide:
 
                     summary_prompt = f"Write a 2-3 sentence executive summary of this contract analysis. Key risks found: {len(risk_findings)}. Focus on the most critical issue for a CEO."
 
+                    _call_start2 = _time.time()
                     summary_response = client.chat.completions.create(
                         model=model,
                         messages=[
@@ -5195,6 +5307,7 @@ For each risk, provide:
                         max_tokens=200,
                         temperature=0.3
                     )
+                    _track_model_call(summary_response, _time.time() - _call_start2)
                     summary_text = (summary_response.choices[0].message.content or "").strip()
 
                     yield json.dumps({
@@ -5410,6 +5523,7 @@ OCR Text from ID:
 Return ONLY valid JSON, no other text."""
 
     try:
+        _call_start = _time.time()
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -5419,7 +5533,8 @@ Return ONLY valid JSON, no other text."""
             max_tokens=512,
             temperature=0.3
         )
-        
+        _track_model_call(response, _time.time() - _call_start)
+
         result_text = response.choices[0].message.content.strip()
         
         # Try to parse JSON from response
@@ -5460,6 +5575,46 @@ def clear_audit_log():
     """Clear the agent's audit trail."""
     AGENT_AUDIT_LOG.clear()
     return jsonify({"success": True})
+
+
+@app.route('/session-stats', methods=['GET'])
+def session_stats():
+    """Return session stats and computed savings for the Local AI Savings widget."""
+    calls = SESSION_STATS["calls"]
+    input_tokens = SESSION_STATS["input_tokens"]
+    output_tokens = SESSION_STATS["output_tokens"]
+    inference_seconds = SESSION_STATS["inference_seconds"]
+
+    # Foundry Local doesn't report token usage - estimate from call count
+    # Average: ~600 input tokens (system prompt + content), ~300 output tokens
+    if calls > 0 and input_tokens == 0:
+        input_tokens = calls * 600
+        output_tokens = calls * 300
+
+    # Cloud cost: Azure GPT-4o pricing with 1.5x enterprise overhead
+    # Input: $2.50/1M tokens, Output: $10.00/1M tokens
+    cloud_cost = (input_tokens * 2.50 / 1e6 + output_tokens * 10.00 / 1e6) * 1.5
+
+    # NPU energy: 5W sustained during inference
+    npu_wh = inference_seconds * 5.0 / 3600
+
+    # Cloud energy: 0.4 Wh per query (GPT-4o, arxiv/Epoch AI)
+    cloud_wh = calls * 0.4
+
+    # CO2 avoided: US grid average 373 g/kWh
+    co2_avoided_g = (cloud_wh - npu_wh) / 1000 * 373
+
+    return jsonify({
+        "calls": calls,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "inference_seconds": round(inference_seconds, 1),
+        "cloud_cost_saved": round(cloud_cost, 4),
+        "npu_wh": round(npu_wh, 4),
+        "cloud_wh": round(cloud_wh, 2),
+        "co2_avoided_g": round(co2_avoided_g, 2),
+    })
 
 
 @app.route('/connectivity-check', methods=['GET'])
@@ -5596,6 +5751,7 @@ def brief_me():
         # Step 3: Send to Phi-4 Mini
         yield json.dumps({"type": "status", "message": "Generating briefing with AI..."}) + "\n"
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -5605,6 +5761,7 @@ def brief_me():
                 max_tokens=512,
                 temperature=0.4,
             )
+            _track_model_call(response, _time.time() - _call_start)
             briefing = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({
@@ -5648,6 +5805,7 @@ def triage_inbox():
         )
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -5657,6 +5815,7 @@ def triage_inbox():
                 max_tokens=800,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             result = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "briefing", "text": result, "time": total}) + "\n"
@@ -5719,6 +5878,7 @@ def prep_next_meeting():
         )
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -5728,6 +5888,7 @@ def prep_next_meeting():
                 max_tokens=500,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             result = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "briefing", "text": result, "time": total}) + "\n"
@@ -5753,6 +5914,7 @@ def top_3_focus():
         data_text = compress_for_briefing(events, tasks, emails)
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -5770,6 +5932,7 @@ def top_3_focus():
                 max_tokens=400,
                 temperature=0.3,
             )
+            _track_model_call(response, _time.time() - _call_start)
             result = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "briefing", "text": result, "time": total,
@@ -5825,6 +5988,7 @@ def tomorrow_preview():
         yield json.dumps({"type": "status", "message": "Generating tomorrow's preview..."}) + "\n"
 
         try:
+            _call_start = _time.time()
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -5841,6 +6005,7 @@ def tomorrow_preview():
                 max_tokens=500,
                 temperature=0.4,
             )
+            _track_model_call(response, _time.time() - _call_start)
             result = (response.choices[0].message.content or "").strip()
             total = round(_time.time() - start, 1)
             yield json.dumps({"type": "briefing", "text": result, "time": total,
