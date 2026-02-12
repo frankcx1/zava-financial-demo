@@ -23,14 +23,19 @@ desktop.ini
 # Project specific
 uploads/
 *.log
-*_Summary.txt
 nul
 
-# Old/backup files
-npu_demo_flask_saveMVP.py
-npu_demo_flask_qualcomm.py
+# Junk / archive
+_junk/
+
+# Large binaries (commit selectively if needed)
+*.zip
+*.docx
 *.mp4.part
 
 # Don't commit these if you add API keys later
 .env
 *.env
+
+# Claude Code local settings (user-specific)
+.claude/
