@@ -197,17 +197,13 @@ class TestPowerShellAllowlist(unittest.TestCase):
         self._assert_blocked(result)
 
     def test_pipe_injection_semicolon(self):
-        """get-content is allowed, but appending '; Remove-Item' via semicolon should be caught.
-        Note: the current allowlist checks startswith, so 'get-content ...; remove-item ...'
-        WILL pass the allowlist because it starts with 'get-content'. This test documents that gap."""
+        """get-content is allowed, but appending '; Remove-Item' via semicolon must be blocked
+        by the command separator guard."""
         result = app_module.execute_tool("exec", {
             "command": "get-content C:\\file.txt; Remove-Item C:\\important"
         })
-        # Current behavior: passes allowlist (starts with 'get-content')
-        # This documents the known gap — the command will attempt to run
-        # but PowerShell itself may error on the path
-        # We just verify it doesn't crash the app
-        self.assertIsInstance(result, dict)
+        self._assert_blocked(result)
+        self.assertIn("separator", result["error"].lower())
         self.assertIn("success", result)
 
     def test_allowed_get_childitem(self):

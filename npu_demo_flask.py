@@ -477,6 +477,11 @@ def execute_tool(name, arguments):
     elif name == "exec":
         command = arguments.get("command", "")
         cmd_lower = command.lower().strip()
+        # Safety: block command separators / chaining tokens that could smuggle extra commands
+        _DANGEROUS_TOKENS = [';', '&&', '||', '$(', '\n', '\r', '`']
+        for token in _DANGEROUS_TOKENS:
+            if token in command:
+                return {"success": False, "error": f"Security Policy: Command separators are not permitted. Blocked token: {repr(token)}"}
         # Safety: allowlist — only permitted cmdlets can run
         if not any(cmd_lower.startswith(a) or (" | " in cmd_lower and a in cmd_lower) for a in _ALLOWED_COMMANDS):
             return {"success": False, "error": "Security Policy: Only approved commands are permitted. Blocked: " + command.split()[0] if command.split() else command}
@@ -6341,7 +6346,8 @@ def session_stats():
 @app.route('/knowledge/search', methods=['POST'])
 def knowledge_search():
     """Search local knowledge index."""
-    query = (request.json or {}).get('query', '')
+    data = request.get_json(silent=True) or {}
+    query = data.get('query', '') if isinstance(data, dict) else ''
     results = search_knowledge(query)
     return jsonify({"results": results, "total_indexed": len(KNOWLEDGE_INDEX)})
 
@@ -6395,7 +6401,9 @@ def _check_network():
 @app.route('/router/analyze', methods=['POST'])
 def router_analyze():
     """Two-Brain Router: local attempt -> knowledge search -> decision card -> optional escalation consent."""
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
     text = data.get('text', '')
     query = data.get('query', '')
     filename = data.get('filename', '')
@@ -6533,8 +6541,13 @@ def router_analyze():
 @app.route('/router/decide', methods=['POST'])
 def router_decide():
     """Record the user's escalation decision and generate Trust Receipt."""
-    data = request.json
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid JSON body"}), 400
     decision = data.get('decision', 'decline')
+    _VALID_DECISIONS = ('approve', 'decline')
+    if decision not in _VALID_DECISIONS:
+        return jsonify({"error": f"Invalid decision value. Must be one of: {_VALID_DECISIONS}"}), 400
     context = data.get('context', {})
 
     is_offline = not _check_network()
@@ -6552,11 +6565,11 @@ def router_decide():
         "model_used": DEFAULT_MODEL,
         "offline": is_offline,
         "pii_detected": context.get('pii_found', 0),
-        "pii_types": [f["type"] for f in context.get('pii_details', [])],
+        "pii_types": [f["type"] for f in (context.get('pii_details') or []) if isinstance(f, dict) and "type" in f] if isinstance(context.get('pii_details'), list) else [],
         "estimated_cost_if_escalated": context.get('estimated_cost', 0),
         "estimated_tokens_if_escalated": context.get('estimated_tokens', 0),
         "confidence": context.get('confidence', 'unknown'),
-        "sources_consulted": [s["filename"] for s in context.get('sources_used', [])],
+        "sources_consulted": [s["filename"] for s in (context.get('sources_used') or []) if isinstance(s, dict) and "filename" in s] if isinstance(context.get('sources_used'), list) else [],
         "data_sent": False if is_offline else (decision == 'approve'),
     }
 

@@ -759,35 +759,43 @@ class TestInvalidJSONBody(unittest.TestCase):
 
     def test_router_analyze_no_content_type(self):
         resp = self.client.post("/router/analyze", data="not json")
-        # request.json returns None → data.get() → AttributeError → 500
-        self.assertIn(resp.status_code, (400, 415, 500))
+        # get_json(silent=True) returns None → falls back to {} → 200 with empty text
+        self.assertIn(resp.status_code, (200, 400))
 
     def test_router_analyze_empty_body(self):
         resp = self.client.post("/router/analyze",
                                 data="",
                                 content_type="application/json")
-        self.assertIn(resp.status_code, (400, 415, 500))
+        # get_json(silent=True) returns None → falls back to {} → 200 with empty text
+        self.assertIn(resp.status_code, (200, 400))
 
     def test_router_decide_no_json(self):
         resp = self.client.post("/router/decide", data="not json")
-        self.assertIn(resp.status_code, (400, 415, 500))
+        # get_json(silent=True) returns None → falls back to {} → default decline
+        self.assertIn(resp.status_code, (200, 400))
 
     def test_router_decide_empty_body(self):
         resp = self.client.post("/router/decide",
                                 data="",
                                 content_type="application/json")
-        self.assertIn(resp.status_code, (400, 415, 500))
+        # get_json(silent=True) returns None → falls back to {} → default decline
+        self.assertIn(resp.status_code, (200, 400))
 
     def test_knowledge_search_no_json(self):
         resp = self.client.post("/knowledge/search", data="not json")
-        # This endpoint uses (request.json or {}).get(...) — should handle gracefully
-        self.assertIn(resp.status_code, (200, 400, 415))
+        # get_json(silent=True) returns None → falls back to {} → empty query → 200
+        self.assertIn(resp.status_code, (200, 400))
 
-    def test_no_audit_log_entry_on_malformed_decide(self):
-        """Malformed request should not create a partial audit entry."""
+    def test_malformed_decide_defaults_to_decline(self):
+        """Non-JSON body falls through to default decline (graceful degradation)."""
         resp = self.client.post("/router/decide", data="not json")
-        router_entries = [e for e in app_module.AGENT_AUDIT_LOG if e.get("tool") == "router"]
-        self.assertEqual(len(router_entries), 0)
+        # get_json(silent=True) returns None → {} → decision defaults to 'decline'
+        if resp.status_code == 200:
+            receipt = resp.get_json()
+            self.assertEqual(receipt["decision"], "decline")
+        else:
+            # 400 is also acceptable if validation rejects it
+            self.assertEqual(resp.status_code, 400)
 
 
 class TestXSSEscapingInSnippets(unittest.TestCase):
@@ -1183,15 +1191,15 @@ class TestRouterDecideWithStaleContext(unittest.TestCase):
             self.assertIn("timestamp", entry)
 
     def test_unknown_decision_value(self):
-        """Non-standard decision value should still be logged without crash."""
+        """Non-standard decision value should be rejected with 400."""
         resp = self.client.post("/router/decide", json={
             "decision": "maybe_later",
             "context": {"confidence": "MEDIUM"}
         })
-        self.assertEqual(resp.status_code, 200)
-        receipt = resp.get_json()
-        self.assertEqual(receipt["decision"], "maybe_later")
-        self.assertFalse(receipt["data_sent"])  # only 'approve' sets data_sent=True
+        self.assertEqual(resp.status_code, 400)
+        body = resp.get_json()
+        self.assertIn("error", body)
+        self.assertIn("Invalid decision", body["error"])
 
     def test_extra_unknown_fields_ignored(self):
         """Extra fields in context should not cause errors."""
