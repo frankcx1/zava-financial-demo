@@ -126,6 +126,83 @@ Title: General Counsel
 Date: January 15, 2026
 """)
 
+# --- Local Knowledge Index ---
+KNOWLEDGE_INDEX = {}  # {filename: {"text": str, "path": str, "word_count": int, "terms": dict}}
+
+_STOPWORDS = {'the','a','an','and','or','but','in','on','at','to','for','of','is','it','that','this',
+              'with','as','by','from','be','was','were','are','been','being','have','has','had','do',
+              'does','did','will','would','shall','should','may','might','can','could','not','no',
+              'all','any','each','every','such','than','then','them','they','its','our','your','we'}
+
+
+def build_knowledge_index():
+    """Scan DEMO_DIR and build keyword index for Local Knowledge search."""
+    global KNOWLEDGE_INDEX
+    index = {}
+    for root, dirs, files in os.walk(DEMO_DIR):
+        for fname in files:
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in ('.txt', '.pdf', '.docx', '.md'):
+                continue
+            filepath = os.path.join(root, fname)
+            try:
+                text = extract_text(filepath)
+                if text and not text.startswith("Error"):
+                    words = re.findall(r'[a-z]+', text.lower())
+                    term_freq = {}
+                    for w in words:
+                        if w not in _STOPWORDS and len(w) > 2:
+                            term_freq[w] = term_freq.get(w, 0) + 1
+                    index[fname] = {
+                        "text": text,
+                        "path": filepath,
+                        "word_count": len(words),
+                        "terms": term_freq,
+                    }
+            except Exception:
+                continue
+    KNOWLEDGE_INDEX = index
+    print(f"  Local Knowledge: indexed {len(index)} documents in {DEMO_DIR}")
+
+
+def search_knowledge(query, top_k=3):
+    """Search the local knowledge index. Returns list of {filename, snippet, score}."""
+    if not KNOWLEDGE_INDEX:
+        return []
+    query_terms = set(re.findall(r'[a-z]+', query.lower()))
+    results = []
+    for fname, data in KNOWLEDGE_INDEX.items():
+        score = sum(data["terms"].get(t, 0) for t in query_terms)
+        if score > 0:
+            best_snippet = _extract_best_snippet(data["text"], query_terms, max_len=500)
+            results.append({
+                "filename": fname,
+                "snippet": best_snippet,
+                "score": score,
+                "word_count": data["word_count"],
+            })
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:top_k]
+
+
+def _extract_best_snippet(text, query_terms, max_len=500):
+    """Find the text region with highest density of query terms."""
+    words = text.split()
+    if len(words) <= 60:
+        return text[:max_len]
+    window = 60
+    best_score = 0
+    best_start = 0
+    for i in range(len(words) - window):
+        chunk = ' '.join(words[i:i+window]).lower()
+        score = sum(1 for t in query_terms if t in chunk)
+        if score > best_score:
+            best_score = score
+            best_start = i
+    snippet = ' '.join(words[best_start:best_start+window])
+    return snippet[:max_len]
+
+
 AGENT_AUDIT_LOG = []
 
 # --- Session stats for Local AI Savings widget ---
@@ -1654,6 +1731,209 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .privacy-icon { font-size: 1.5em; }
 
+        /* Two-Brain Router — Decision Card */
+        .decision-card {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(0,188,242,0.3);
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin: 16px auto;
+            max-width: 640px;
+        }
+        .decision-card-header {
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.5;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .decision-card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.92em;
+        }
+        .decision-card-row:last-child { border-bottom: none; }
+        .decision-card-label { opacity: 0.7; }
+        .decision-card-value { font-weight: 600; text-align: right; max-width: 60%; }
+        .confidence-high { color: #00CC6A; }
+        .confidence-medium { color: #FFB900; }
+        .confidence-low { color: #FF4444; }
+
+        /* Router analysis text */
+        .router-analysis {
+            background: rgba(255,255,255,0.04);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin: 16px auto;
+            max-width: 640px;
+            font-size: 0.92em;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Escalation Consent */
+        .escalation-header {
+            font-size: 1.05em;
+            font-weight: 600;
+            color: #FFB900;
+            margin: 20px 0 4px;
+            text-align: center;
+        }
+        .escalation-subtext {
+            text-align: center;
+            opacity: 0.6;
+            font-size: 0.88em;
+            margin-bottom: 16px;
+        }
+
+        /* Redaction Diff */
+        .redaction-diff {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 16px auto;
+            max-width: 640px;
+        }
+        .diff-col {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .diff-col-header {
+            padding: 8px 12px;
+            font-size: 0.78em;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            opacity: 0.5;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-weight: 600;
+        }
+        .diff-col-body {
+            padding: 12px;
+            font-size: 0.82em;
+            line-height: 1.5;
+            max-height: 250px;
+            overflow-y: auto;
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            white-space: pre-wrap;
+        }
+        .diff-redacted { color: rgba(255,255,255,0.9); }
+        .pii-redacted {
+            background: rgba(255, 68, 68, 0.25);
+            color: #FF6B6B;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        /* Escalation cost bar */
+        .escalation-cost {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin: 14px 0;
+            font-size: 0.85em;
+            opacity: 0.8;
+        }
+
+        /* Escalation buttons */
+        .escalation-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .escalation-btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: 2px solid;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .escalation-btn.decline {
+            background: rgba(0, 204, 106, 0.1);
+            border-color: rgba(0, 204, 106, 0.4);
+            color: #00CC6A;
+        }
+        .escalation-btn.decline:hover {
+            background: rgba(0, 204, 106, 0.25);
+            border-color: #00CC6A;
+        }
+        .escalation-btn.approve {
+            background: rgba(255, 185, 0, 0.08);
+            border-color: rgba(255, 185, 0, 0.3);
+            color: #FFB900;
+        }
+        .escalation-btn.approve:hover {
+            background: rgba(255, 185, 0, 0.2);
+            border-color: #FFB900;
+        }
+
+        /* Stayed Local celebration */
+        .stayed-local-banner {
+            text-align: center;
+            padding: 24px;
+            margin: 20px auto;
+            max-width: 500px;
+            background: linear-gradient(135deg, rgba(0,204,106,0.1) 0%, rgba(0,204,106,0.03) 100%);
+            border: 1px solid rgba(0,204,106,0.3);
+            border-radius: 14px;
+        }
+        .stayed-local-icon {
+            font-size: 2.5em;
+            margin-bottom: 8px;
+            animation: lockPulse 0.6s ease-out;
+        }
+        @keyframes lockPulse {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .stayed-local-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #00CC6A;
+            margin-bottom: 6px;
+        }
+        .stayed-local-detail {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        /* Trust Receipt */
+        .trust-receipt {
+            background: rgba(0,188,242,0.06);
+            border: 1px solid rgba(0,188,242,0.2);
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin: 16px auto;
+            max-width: 640px;
+        }
+        .trust-receipt-header {
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.5;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .trust-receipt-body {
+            font-size: 0.88em;
+            line-height: 1.7;
+        }
+        .trust-receipt-line { padding: 2px 0; }
+        .trust-receipt-line.highlight {
+            color: #00CC6A;
+            font-weight: 600;
+        }
+
         /* Warmup overlay */
         .warmup-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -1711,6 +1991,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <span class="nav-icon">&#129302;</span>
             <span class="sidebar-label">AI Agent<span class="sidebar-nav-sub">Chat &amp; Tooling with Phi</span></span>
           </a>
+          <a class="sidebar-nav-item" data-tab="router">
+            <span class="nav-icon">&#129504;</span>
+            <span class="sidebar-label">Two-Brain<span class="sidebar-nav-sub">Local vs. Frontier Router</span></span>
+          </a>
           <a class="sidebar-nav-item" data-tab="day">
             <span class="nav-icon">&#9728;&#65039;</span>
             <span class="sidebar-label">My Day<span class="sidebar-nav-sub">AI Chief of Staff</span></span>
@@ -1757,6 +2041,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         <div class="tabs" style="display:none;">
             <button class="tab-btn" id="dayTabBtn">My Day</button>
             <button class="tab-btn active" id="chatTabBtn">AI Agent</button>
+            <button class="tab-btn" id="routerTabBtn">Two-Brain Router</button>
             <button class="tab-btn" id="auditorTabBtn">&#128274; Auditor</button>
             <button class="tab-btn" id="idTabBtn">ID Verification</button>
         </div>
@@ -1850,6 +2135,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                   <span class="chip-icon">&#128737;</span>
                   <span>Device Health</span>
                 </button>
+                <button class="suggestion-chip" data-action="two-brain">
+                  <span class="chip-icon">&#129504;</span>
+                  <span>Two-Brain Analysis</span>
+                </button>
               </div>
             </div>
 
@@ -1915,6 +2204,114 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
           </div>
+        </div>
+
+        <!-- Two-Brain Router Tab -->
+        <div id="router-tab" class="tab-content">
+            <div class="auditor-header">&#129504; TWO-BRAIN ROUTER</div>
+
+            <!-- State 1: Input Zone -->
+            <div id="routerInputZone">
+                <div class="auditor-dropzone" id="routerDropzone">
+                    <div class="dropzone-icon">&#129504;</div>
+                    <div class="dropzone-title">Drop a document or ask a question</div>
+                    <div class="dropzone-subtitle">Local AI attempts first. You control what (if anything) goes to the cloud.</div>
+                    <input type="file" id="routerFileInput" accept=".pdf,.docx,.txt,.md" style="display:none;">
+                    <button class="auditor-upload-btn" id="routerUploadBtn">Select File</button>
+                    <div class="dropzone-formats">PDF &bull; DOCX &bull; TXT &bull; MD</div>
+                </div>
+                <div style="text-align:center;margin:16px 0 8px;opacity:0.5;font-size:0.9em;">&mdash; or &mdash;</div>
+                <div style="max-width:600px;margin:0 auto;">
+                    <div class="input-area">
+                        <input type="text" id="routerQueryInput" placeholder="Ask a question about your local documents..." style="flex:1;padding:10px 14px;border:none;background:transparent;color:#fff;font-size:1em;outline:none;">
+                        <button class="send-btn" id="routerAskBtn">&#10148;</button>
+                    </div>
+                </div>
+                <div class="auditor-demo-section" style="margin-top:20px;">
+                    <div style="opacity:0.6;font-size:0.9em;margin-bottom:8px;">Quick demo:</div>
+                    <button class="auditor-demo-btn" id="routerDemoBtn">&#128196; Analyze Demo NDA with Router</button>
+                </div>
+            </div>
+
+            <!-- State 2: Decision Card -->
+            <div id="routerDecision" style="display:none;">
+                <div id="routerStatusArea" class="processing-log">
+                    <div class="processing-log-header">&#129504; ROUTER PROCESSING</div>
+                    <div class="processing-log-content" id="routerStatusLog"></div>
+                </div>
+
+                <div id="routerDecisionCard" style="display:none;">
+                    <div class="decision-card">
+                        <div class="decision-card-header">LOCAL DECISION</div>
+                        <div class="decision-card-row">
+                            <span class="decision-card-label">Answered locally:</span>
+                            <span id="dcConfidence" class="decision-card-value"></span>
+                        </div>
+                        <div class="decision-card-row">
+                            <span class="decision-card-label">Local Knowledge sources:</span>
+                            <span id="dcSources" class="decision-card-value"></span>
+                        </div>
+                        <div class="decision-card-row">
+                            <span class="decision-card-label">Escalation benefit:</span>
+                            <span id="dcFrontierBenefit" class="decision-card-value"></span>
+                        </div>
+                    </div>
+
+                    <div class="router-analysis" id="routerAnalysisText"></div>
+
+                    <!-- Escalation Consent (shown only if MEDIUM/LOW) -->
+                    <div id="escalationConsent" style="display:none;">
+                        <div class="escalation-header">&#9888;&#65039; ESCALATION AVAILABLE &mdash; Consult Expert (Frontier AI)</div>
+                        <div class="escalation-subtext">Review exactly what would leave the device:</div>
+
+                        <div class="redaction-diff">
+                            <div class="diff-col">
+                                <div class="diff-col-header">Original (stays on device)</div>
+                                <div class="diff-col-body" id="diffOriginal"></div>
+                            </div>
+                            <div class="diff-col">
+                                <div class="diff-col-header">Sanitized payload (would be sent)</div>
+                                <div class="diff-col-body diff-redacted" id="diffRedacted"></div>
+                            </div>
+                        </div>
+
+                        <div class="escalation-cost">
+                            <span>PII redacted: <strong id="escPiiCount">0</strong> items</span>
+                            <span>Estimated tokens: <strong id="escTokens">0</strong></span>
+                            <span>Estimated cost: <strong id="escCost">$0.0000</strong></span>
+                        </div>
+
+                        <div class="escalation-buttons">
+                            <button class="escalation-btn decline" id="btnDeclineEsc">&#128274; Stay Local &mdash; Send Nothing</button>
+                            <button class="escalation-btn approve" id="btnApproveEsc">&#9729;&#65039; Send Sanitized to Frontier</button>
+                        </div>
+                    </div>
+
+                    <!-- Stayed Local Celebration -->
+                    <div id="stayedLocalBanner" style="display:none;">
+                        <div class="stayed-local-banner">
+                            <div class="stayed-local-icon" id="stayedLocalLockIcon">&#128274;</div>
+                            <div class="stayed-local-title">Stayed Local</div>
+                            <div class="stayed-local-detail" id="stayedLocalDetail"></div>
+                        </div>
+                    </div>
+
+                    <!-- Trust Receipt -->
+                    <div id="routerTrustReceipt" style="display:none;">
+                        <div class="trust-receipt">
+                            <div class="trust-receipt-header">&#128203; TRUST RECEIPT</div>
+                            <div class="trust-receipt-body" id="trustReceiptBody"></div>
+                        </div>
+                    </div>
+
+                    <!-- Post-action buttons -->
+                    <div id="routerPostActions" style="display:none;text-align:center;margin-top:16px;">
+                        <button class="auditor-action-btn" onclick="resetRouter()">&#129504; Analyze Another Document</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
         </div>
 
         <!-- Clean Room Auditor Tab -->
@@ -2198,6 +2595,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             var tabMap = {
                 day:     { tabId: "day-tab",     btnId: "dayTabBtn",     toast: "Same local AI \u2014 now reading your day" },
                 chat:    { tabId: "chat-tab",    btnId: "chatTabBtn",    toast: "Same local AI \u2014 now with execution tools" },
+                router:  { tabId: "router-tab",  btnId: "routerTabBtn",  toast: "Two-Brain Router \u2014 local vs. frontier" },
                 auditor: { tabId: "auditor-tab", btnId: "auditorTabBtn", toast: "Same local AI \u2014 now in clean room mode" },
                 id:      { tabId: "id-tab",      btnId: "idTabBtn",     toast: "Same local AI \u2014 now verifying identity" }
             };
@@ -2633,6 +3031,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         document.getElementById("attachBtn").click();
                     } else if (action === "device-health") {
                         runDeviceHealth();
+                    } else if (action === "two-brain") {
+                        switchToTab("router-tab", "routerTabBtn");
                     }
                 });
             });
@@ -2893,6 +3293,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             '<button class="suggestion-chip" data-action="list-documents"><span class="chip-icon">&#128193;</span><span>List Documents</span></button>' +
                             '<button class="suggestion-chip" data-action="summarize-doc"><span class="chip-icon">&#128221;</span><span>Summarize a Document</span></button>' +
                             '<button class="suggestion-chip" data-action="device-health"><span class="chip-icon">&#128737;</span><span>Device Health</span></button>' +
+                            '<button class="suggestion-chip" data-action="two-brain"><span class="chip-icon">&#129504;</span><span>Two-Brain Analysis</span></button>' +
                         '</div></div>';
                     document.getElementById("chatContainer").insertAdjacentHTML("afterend", chipsHtml);
                     // Re-bind chip handlers
@@ -2912,6 +3313,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                 document.getElementById("attachBtn").click();
                             } else if (action === "device-health") {
                                 runDeviceHealth();
+                            } else if (action === "two-brain") {
+                                switchToTab("router-tab", "routerTabBtn");
                             }
                         });
                     });
@@ -4107,6 +4510,322 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             }
         }
         
+        // === Two-Brain Router Functions ===
+        var routerDocText = "";
+        var routerDocName = "";
+        var routerRunning = false;
+        var routerEscalationContext = {};  // saved for decline/approve decision
+
+        // File upload button
+        document.getElementById("routerUploadBtn").addEventListener("click", function() {
+            document.getElementById("routerFileInput").click();
+        });
+
+        document.getElementById("routerFileInput").addEventListener("change", function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var formData = new FormData();
+            formData.append("file", file);
+            fetch("/upload-to-demo", { method: "POST", body: formData })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Upload failed: " + data.error); return; }
+                routerDocText = data.text || "";
+                routerDocName = data.filename || file.name;
+                runRouterAnalysis();
+            });
+        });
+
+        // Drag and drop
+        var routerDZ = document.getElementById("routerDropzone");
+        routerDZ.addEventListener("dragover", function(e) { e.preventDefault(); routerDZ.classList.add("dragover"); });
+        routerDZ.addEventListener("dragleave", function() { routerDZ.classList.remove("dragover"); });
+        routerDZ.addEventListener("drop", function(e) {
+            e.preventDefault();
+            routerDZ.classList.remove("dragover");
+            var file = e.dataTransfer.files[0];
+            if (file) {
+                var input = document.getElementById("routerFileInput");
+                var dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                input.dispatchEvent(new Event("change"));
+            }
+        });
+
+        // Demo button — load demo NDA via existing endpoint
+        document.getElementById("routerDemoBtn").addEventListener("click", function() {
+            fetch("/auditor-demo-doc")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Demo document not found: " + data.error); return; }
+                routerDocText = data.text;
+                routerDocName = data.filename;
+                runRouterAnalysis();
+            });
+        });
+
+        // Query-only mode (no file)
+        document.getElementById("routerAskBtn").addEventListener("click", function() {
+            var q = document.getElementById("routerQueryInput").value.trim();
+            if (!q) return;
+            routerDocText = "";
+            routerDocName = "";
+            runRouterAnalysis(q);
+        });
+        document.getElementById("routerQueryInput").addEventListener("keydown", function(e) {
+            if (e.key === "Enter") document.getElementById("routerAskBtn").click();
+        });
+
+        function runRouterAnalysis(queryOnly) {
+            if (routerRunning) return;
+            routerRunning = true;
+
+            // Switch to decision view
+            document.getElementById("routerInputZone").style.display = "none";
+            document.getElementById("routerDecision").style.display = "block";
+            document.getElementById("routerDecisionCard").style.display = "none";
+            document.getElementById("escalationConsent").style.display = "none";
+            document.getElementById("stayedLocalBanner").style.display = "none";
+            document.getElementById("routerTrustReceipt").style.display = "none";
+            document.getElementById("routerPostActions").style.display = "none";
+            document.getElementById("routerStatusLog").innerHTML =
+                '<div class="log-step active"><span class="spinner"></span> Starting Two-Brain Router...</div>';
+
+            var body = {};
+            if (routerDocText) {
+                body.text = routerDocText;
+                body.filename = routerDocName;
+            }
+            if (queryOnly) {
+                body.query = queryOnly;
+            } else if (!routerDocText) {
+                routerRunning = false;
+                return;
+            }
+
+            fetch("/router/analyze", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body)
+            })
+            .then(function(r) { return r.body.getReader(); })
+            .then(function(reader) {
+                var decoder = new TextDecoder();
+                var buffer = "";
+
+                function processLine(line) {
+                    line = line.trim();
+                    if (!line) return;
+                    try {
+                        var evt = JSON.parse(line);
+                        processRouterEvent(evt);
+                    } catch(e) { console.log("Router parse error:", e); }
+                }
+
+                function read() {
+                    reader.read().then(function(result) {
+                        if (result.done) {
+                            if (buffer.trim()) processLine(buffer);
+                            routerRunning = false;
+                            return;
+                        }
+                        buffer += decoder.decode(result.value);
+                        var lines = buffer.split("\n");
+                        buffer = lines.pop();
+                        lines.forEach(processLine);
+                        read();
+                    });
+                }
+                read();
+            })
+            .catch(function(err) {
+                document.getElementById("routerStatusLog").innerHTML +=
+                    '<div class="log-step" style="color:#FF4444;">Error: ' + err.message + '</div>';
+                routerRunning = false;
+            });
+        }
+
+        function processRouterEvent(evt) {
+            var log = document.getElementById("routerStatusLog");
+
+            if (evt.type === "status") {
+                log.innerHTML += '<div class="log-step active"><span class="spinner"></span> ' + evt.message + '</div>';
+            }
+            else if (evt.type === "knowledge") {
+                var count = evt.sources ? evt.sources.length : 0;
+                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Local Knowledge: ' +
+                    count + ' source(s) found (' + evt.total_indexed + ' indexed)</div>';
+            }
+            else if (evt.type === "decision_card") {
+                document.getElementById("routerDecisionCard").style.display = "block";
+
+                // Confidence indicator
+                var confEl = document.getElementById("dcConfidence");
+                if (evt.confidence === "HIGH") {
+                    confEl.innerHTML = '<span class="confidence-high">&#10004; Sufficient</span>';
+                } else if (evt.confidence === "MEDIUM") {
+                    confEl.innerHTML = '<span class="confidence-medium">&#9888;&#65039; Partial</span>';
+                } else {
+                    confEl.innerHTML = '<span class="confidence-low">&#10060; Insufficient</span>';
+                }
+                confEl.title = evt.reasoning || "";
+
+                // Sources
+                var srcCount = evt.sources_used ? evt.sources_used.length : 0;
+                document.getElementById("dcSources").textContent = srcCount + " document" + (srcCount !== 1 ? "s" : "");
+
+                // Frontier benefit
+                document.getElementById("dcFrontierBenefit").textContent = evt.frontier_benefit || "None";
+
+                // Analysis text
+                document.getElementById("routerAnalysisText").innerHTML = mdToHtml(evt.analysis || "");
+
+                // Update status log
+                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Analysis complete (' + evt.analysis_time + 's)</div>';
+
+                // Save for escalation context
+                routerEscalationContext.confidence = evt.confidence;
+                routerEscalationContext.sources_used = evt.sources_used || [];
+
+                // If HIGH confidence, show post-actions immediately
+                if (evt.confidence === "HIGH") {
+                    document.getElementById("routerPostActions").style.display = "block";
+                }
+            }
+            else if (evt.type === "escalation_available") {
+                document.getElementById("escalationConsent").style.display = "block";
+
+                // Populate diff
+                document.getElementById("diffOriginal").textContent = evt.original_preview || "";
+                // Highlight redacted spans in the sanitized preview
+                var redactedHtml = (evt.redacted_preview || "").replace(
+                    /\[REDACTED (.*?)\]/g,
+                    '<span class="pii-redacted">[REDACTED $1]</span>'
+                );
+                document.getElementById("diffRedacted").innerHTML = redactedHtml;
+
+                // Cost/token info
+                document.getElementById("escPiiCount").textContent = evt.pii_found || 0;
+                document.getElementById("escTokens").textContent = evt.estimated_tokens || 0;
+                document.getElementById("escCost").textContent = "$" + (evt.estimated_cost || 0).toFixed(4);
+
+                // Save escalation context
+                routerEscalationContext.pii_found = evt.pii_found;
+                routerEscalationContext.pii_details = evt.pii_details || [];
+                routerEscalationContext.estimated_tokens = evt.estimated_tokens;
+                routerEscalationContext.estimated_cost = evt.estimated_cost;
+            }
+            else if (evt.type === "error") {
+                log.innerHTML += '<div class="log-step" style="color:#FF4444;">&#10060; ' + evt.message + '</div>';
+                document.getElementById("routerPostActions").style.display = "block";
+            }
+            else if (evt.type === "complete") {
+                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Router complete (' + evt.total_time + 's)</div>';
+            }
+        }
+
+        // Decline escalation — the heroic path
+        document.getElementById("btnDeclineEsc").addEventListener("click", function() {
+            document.getElementById("escalationConsent").style.display = "none";
+
+            // Show Stayed Local banner
+            document.getElementById("stayedLocalBanner").style.display = "block";
+            // Re-trigger animation by resetting the icon
+            var icon = document.getElementById("stayedLocalLockIcon");
+            icon.style.animation = "none";
+            icon.offsetHeight;  // force reflow
+            icon.style.animation = "";
+
+            // Build detail text
+            var piiCount = routerEscalationContext.pii_found || 0;
+            var piiTypes = (routerEscalationContext.pii_details || []).map(function(p) { return p.type; });
+            var uniqueTypes = piiTypes.filter(function(v, i, a) { return a.indexOf(v) === i; });
+            var detail = "";
+            if (piiCount > 0) {
+                detail = piiCount + " PII item" + (piiCount !== 1 ? "s" : "") + " (" + uniqueTypes.join(", ") + ") never left this device. ";
+            }
+            detail += "$0.00 spent. 0 bytes transmitted.";
+            document.getElementById("stayedLocalDetail").textContent = detail;
+
+            // POST decision to backend
+            fetch("/router/decide", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ decision: "decline", context: routerEscalationContext })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(receipt) {
+                renderTrustReceipt(receipt);
+                updateSavingsWidget();
+            });
+
+            document.getElementById("routerPostActions").style.display = "block";
+        });
+
+        // Approve escalation (simulated)
+        document.getElementById("btnApproveEsc").addEventListener("click", function() {
+            document.getElementById("escalationConsent").style.display = "none";
+
+            var log = document.getElementById("routerStatusLog");
+            log.innerHTML += '<div class="log-step active"><span class="spinner"></span> Sending sanitized payload to Frontier...</div>';
+
+            // Simulated delay
+            setTimeout(function() {
+                log.innerHTML += '<div class="log-step" style="color:#FFB900;">&#9729;&#65039; Frontier response received (simulated)</div>';
+
+                fetch("/router/decide", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ decision: "approve", context: routerEscalationContext })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(receipt) {
+                    renderTrustReceipt(receipt);
+                    updateSavingsWidget();
+                });
+
+                document.getElementById("routerPostActions").style.display = "block";
+            }, 2000);
+        });
+
+        function renderTrustReceipt(receipt) {
+            document.getElementById("routerTrustReceipt").style.display = "block";
+            var html = "";
+            html += '<div class="trust-receipt-line">Timestamp: ' + receipt.timestamp + '</div>';
+            html += '<div class="trust-receipt-line">Decision: <strong>' + receipt.decision.toUpperCase() + '</strong></div>';
+            html += '<div class="trust-receipt-line">Model: ' + receipt.model_used + '</div>';
+            html += '<div class="trust-receipt-line">Offline: ' + (receipt.offline ? "Yes" : "No") + '</div>';
+            html += '<div class="trust-receipt-line">PII detected: ' + receipt.pii_detected + ' (' + (receipt.pii_types || []).join(", ") + ')</div>';
+            html += '<div class="trust-receipt-line">Local Knowledge sources: ' + (receipt.sources_consulted || []).join(", ") + '</div>';
+            html += '<div class="trust-receipt-line">Confidence: ' + receipt.confidence + '</div>';
+            if (receipt.counterfactual) {
+                html += '<div class="trust-receipt-line highlight">' + receipt.counterfactual + '</div>';
+            }
+            if (receipt.decision === "decline") {
+                html += '<div class="trust-receipt-line highlight">Network calls: 0 &bull; Data transmitted: 0 bytes</div>';
+            } else {
+                html += '<div class="trust-receipt-line">Data transmitted: sanitized payload sent &bull; Est. cost: $' + (receipt.estimated_cost_if_escalated || 0).toFixed(4) + '</div>';
+            }
+            document.getElementById("trustReceiptBody").innerHTML = html;
+        }
+
+        window.resetRouter = function() {
+            routerDocText = "";
+            routerDocName = "";
+            routerRunning = false;
+            routerEscalationContext = {};
+            document.getElementById("routerInputZone").style.display = "block";
+            document.getElementById("routerDecision").style.display = "none";
+            document.getElementById("routerDecisionCard").style.display = "none";
+            document.getElementById("escalationConsent").style.display = "none";
+            document.getElementById("stayedLocalBanner").style.display = "none";
+            document.getElementById("routerTrustReceipt").style.display = "none";
+            document.getElementById("routerPostActions").style.display = "none";
+            document.getElementById("routerStatusLog").innerHTML = "";
+            document.getElementById("routerQueryInput").value = "";
+        };
+
         console.log("Script loaded!");
     </script>
 
@@ -5617,6 +6336,261 @@ def session_stats():
     })
 
 
+# --- Local Knowledge Endpoints ---
+
+@app.route('/knowledge/search', methods=['POST'])
+def knowledge_search():
+    """Search local knowledge index."""
+    query = (request.json or {}).get('query', '')
+    results = search_knowledge(query)
+    return jsonify({"results": results, "total_indexed": len(KNOWLEDGE_INDEX)})
+
+
+@app.route('/knowledge/refresh', methods=['POST'])
+def knowledge_refresh():
+    """Rebuild the local knowledge index."""
+    build_knowledge_index()
+    return jsonify({"indexed": len(KNOWLEDGE_INDEX)})
+
+
+# --- Two-Brain Router ---
+ROUTER_LOG = []  # Structured trust receipt log
+
+
+def _scan_pii(text):
+    """Scan text for PII. Returns list of findings with type, value, position."""
+    findings = []
+    for match in re.finditer(r'\b(\d{3})-(\d{2})-(\d{4})\b', text):
+        findings.append({"type": "SSN", "value": match.group(0), "start": match.start(), "end": match.end(), "severity": "high"})
+    for match in re.finditer(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text):
+        findings.append({"type": "Email", "value": match.group(0), "start": match.start(), "end": match.end(), "severity": "medium"})
+    for match in re.finditer(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', text):
+        findings.append({"type": "Phone", "value": match.group(0), "start": match.start(), "end": match.end(), "severity": "medium"})
+    findings.sort(key=lambda f: f["start"], reverse=True)
+    return findings
+
+
+def _redact_text(text, pii_findings):
+    """Redact PII from text. Returns redacted copy."""
+    redacted = text
+    for finding in pii_findings:
+        mask = f"[REDACTED {finding['type']}]"
+        redacted = redacted[:finding["start"]] + mask + redacted[finding["end"]:]
+    return redacted
+
+
+def _check_network():
+    """Quick check if network is up."""
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "(Get-NetAdapter -Name 'Wi-Fi' -ErrorAction SilentlyContinue).Status"],
+            capture_output=True, text=True, timeout=3
+        )
+        return "Up" in (proc.stdout or "")
+    except Exception:
+        return False
+
+
+@app.route('/router/analyze', methods=['POST'])
+def router_analyze():
+    """Two-Brain Router: local attempt -> knowledge search -> decision card -> optional escalation consent."""
+    data = request.json
+    text = data.get('text', '')
+    query = data.get('query', '')
+    filename = data.get('filename', '')
+    model = DEFAULT_MODEL
+
+    def generate():
+        start = _time.time()
+
+        # Step 1: Search Local Knowledge for relevant context
+        yield json.dumps({"type": "status", "message": "Searching Local Knowledge..."}) + "\n"
+
+        search_query = query if query else text[:200]
+        knowledge_results = search_knowledge(search_query)
+
+        knowledge_context = ""
+        sources_used = []
+        if knowledge_results:
+            for kr in knowledge_results:
+                knowledge_context += f"\n--- From {kr['filename']} ---\n{kr['snippet']}\n"
+                sources_used.append({"filename": kr["filename"], "score": kr["score"], "word_count": kr["word_count"]})
+
+        # Cap knowledge context to stay within token budget
+        if len(knowledge_context) > 1000:
+            knowledge_context = knowledge_context[:1000] + "\n[...truncated]"
+
+        yield json.dumps({
+            "type": "knowledge",
+            "sources": sources_used,
+            "total_indexed": len(KNOWLEDGE_INDEX),
+        }) + "\n"
+
+        # Step 2: Local analysis with knowledge context
+        yield json.dumps({"type": "status", "message": "Analyzing locally with Phi-4 Mini on NPU..."}) + "\n"
+
+        # Confidence-first prompt: ask model to assess confidence before the full analysis
+        system_prompt = (
+            "You are an analyst running locally on an NPU. First assess your confidence, then answer.\n\n"
+            "Begin your response with exactly these three lines:\n"
+            "CONFIDENCE: HIGH or MEDIUM or LOW\n"
+            "REASONING: one sentence why\n"
+            "FRONTIER_BENEFIT: what a frontier model might add, or 'None — local answer is complete'\n\n"
+            "Then provide your analysis. If local knowledge sources were provided, cite them inline like: (Source: filename.txt)"
+        )
+
+        user_content = ""
+        if text:
+            user_content += f"DOCUMENT ({filename}):\n{text[:2500]}\n\n"
+        if knowledge_context:
+            user_content += f"LOCAL KNOWLEDGE:\n{knowledge_context}\n\n"
+        user_content += f"QUESTION: {query}" if query else "Provide a comprehensive analysis of this document."
+
+        try:
+            _call_start = _time.time()
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+                max_tokens=800,
+                temperature=0.3,
+            )
+            _track_model_call(response, _time.time() - _call_start)
+            ai_response = (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+            return
+
+        analysis_time = round(_time.time() - start, 1)
+
+        # Step 3: Parse confidence from response (expected at top)
+        confidence = "HIGH"
+        reasoning = ""
+        frontier_benefit = "None — local answer is complete"
+
+        for line in ai_response.split('\n'):
+            line_stripped = line.strip()
+            line_upper = line_stripped.upper()
+            if line_upper.startswith('CONFIDENCE:'):
+                val = line_stripped.split(':', 1)[1].strip().upper()
+                if 'HIGH' in val:
+                    confidence = 'HIGH'
+                elif 'LOW' in val:
+                    confidence = 'LOW'
+                elif 'MEDIUM' in val:
+                    confidence = 'MEDIUM'
+            elif line_upper.startswith('REASONING:'):
+                reasoning = line_stripped.split(':', 1)[1].strip()
+            elif line_upper.startswith('FRONTIER_BENEFIT:'):
+                frontier_benefit = line_stripped.split(':', 1)[1].strip()
+
+        # Clean analysis text (remove confidence metadata lines)
+        display_text = '\n'.join(
+            line for line in ai_response.split('\n')
+            if not line.strip().upper().startswith(('CONFIDENCE:', 'REASONING:', 'FRONTIER_BENEFIT:'))
+        ).strip()
+
+        # Step 4: Yield the Decision Card data
+        yield json.dumps({
+            "type": "decision_card",
+            "analysis": display_text,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "frontier_benefit": frontier_benefit,
+            "sources_used": sources_used,
+            "analysis_time": analysis_time,
+        }) + "\n"
+
+        # Step 5: If confidence is not HIGH, prepare escalation data
+        if confidence in ("MEDIUM", "LOW"):
+            pii_findings = _scan_pii(text) if text else []
+            redacted_text = _redact_text(text, pii_findings) if text else ""
+
+            redacted_tokens = len(redacted_text.split()) * 1.3
+            estimated_input_tokens = int(redacted_tokens + 200)
+            estimated_output_tokens = 400
+            estimated_cost = (estimated_input_tokens * 2.50 / 1e6 + estimated_output_tokens * 10.00 / 1e6) * 1.5
+
+            yield json.dumps({
+                "type": "escalation_available",
+                "pii_found": len(pii_findings),
+                "pii_details": pii_findings,
+                "original_preview": text[:800] if text else "",
+                "redacted_preview": redacted_text[:800] if redacted_text else "",
+                "estimated_tokens": estimated_input_tokens + estimated_output_tokens,
+                "estimated_cost": round(estimated_cost, 4),
+            }) + "\n"
+
+        total_time = round(_time.time() - start, 1)
+        yield json.dumps({"type": "complete", "total_time": total_time}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/router/decide', methods=['POST'])
+def router_decide():
+    """Record the user's escalation decision and generate Trust Receipt."""
+    data = request.json
+    decision = data.get('decision', 'decline')
+    context = data.get('context', {})
+
+    is_offline = not _check_network()
+
+    # Offline safety: block escalation approval when device is offline
+    if decision == 'approve' and is_offline:
+        decision = 'decline'
+        offline_downgraded = True
+    else:
+        offline_downgraded = False
+
+    receipt = {
+        "timestamp": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        "decision": decision,
+        "model_used": DEFAULT_MODEL,
+        "offline": is_offline,
+        "pii_detected": context.get('pii_found', 0),
+        "pii_types": [f["type"] for f in context.get('pii_details', [])],
+        "estimated_cost_if_escalated": context.get('estimated_cost', 0),
+        "estimated_tokens_if_escalated": context.get('estimated_tokens', 0),
+        "confidence": context.get('confidence', 'unknown'),
+        "sources_consulted": [s["filename"] for s in context.get('sources_used', [])],
+        "data_sent": False if is_offline else (decision == 'approve'),
+    }
+
+    if offline_downgraded:
+        receipt["offline_downgraded"] = True
+        receipt["offline_reason"] = "Device is offline — escalation blocked. Data stayed local."
+
+    if decision == 'decline':
+        receipt["counterfactual"] = (
+            f"If escalated: ~{receipt['estimated_tokens_if_escalated']} tokens to Azure endpoint, "
+            f"est. ${receipt['estimated_cost_if_escalated']:.4f}, "
+            f"payload would have contained {receipt['pii_detected']} PII item(s) "
+            f"({', '.join(set(receipt['pii_types'])) if receipt['pii_types'] else 'none detected'})"
+        )
+
+    ROUTER_LOG.append(receipt)
+
+    AGENT_AUDIT_LOG.append({
+        "timestamp": _time.strftime("%H:%M:%S"),
+        "tool": "router",
+        "arguments": {"decision": decision, "confidence": receipt["confidence"]},
+        "success": True,
+        "time": 0,
+    })
+
+    return jsonify(receipt)
+
+
+@app.route('/router/log', methods=['GET'])
+def router_log():
+    """Return the full Router decision log (Trust Receipts)."""
+    return jsonify(ROUTER_LOG)
+
+
 @app.route('/connectivity-check', methods=['GET'])
 def connectivity_check():
     """Check network and NPU availability for the airplane mode demo."""
@@ -6049,6 +7023,7 @@ if __name__ == '__main__':
         print("Demo Mode: ENABLED (offline check bypassed)")
     print("")
     print("Features:")
+    print("  - Two-Brain Router (Local vs. Frontier escalation)")
     print("  - My Day (calendar, email, tasks briefing)")
     print("  - AI Agent (tool calling, file ops, system commands)")
     print("  - Clean Room Auditor (confidential document analysis)")
@@ -6093,6 +7068,9 @@ if __name__ == '__main__':
     else:
         MODEL_READY = True  # allow serving anyway
         print(f"\r  Warning: warmup did not complete ({_warmup_secs:.1f}s). Continuing anyway.")
+
+    # --- Build Local Knowledge index ---
+    build_knowledge_index()
 
     # --- Keepalive: prevent model from being unloaded during idle ---
     KEEPALIVE_INTERVAL = 180  # seconds
