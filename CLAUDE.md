@@ -2,9 +2,11 @@
 
 ## Project Overview
 
-This is a single-file Flask demo app (`npu_demo_flask.py`) showcasing on-device AI capabilities using Intel Core Ultra NPU and Microsoft's Phi Silica model via Foundry Local. The app demonstrates three AI-powered capabilities with zero cloud dependencies and zero data egress.
+This is a single-file Flask demo app (`npu_demo_flask.py`) showcasing on-device AI capabilities using NPU hardware via Foundry Local. Supports both Intel Core Ultra (Lunar Lake) and Qualcomm Snapdragon X (ARM64) — silicon is auto-detected at startup. Zero cloud dependencies, zero data egress.
 
-**Architecture:** Python Flask backend (localhost:5000) → Foundry Local runtime (localhost:5272) → Phi Silica 3.8B on NPU
+**Architecture:** Python Flask backend (localhost:5000) → Foundry Local runtime → SLM on NPU
+- Intel: Phi-4 Mini on Intel Core Ultra NPU
+- Qualcomm: Phi-3.5 Mini on Snapdragon X NPU (QNN)
 
 ## Key Files
 
@@ -24,9 +26,14 @@ python npu_demo_flask.py
 ```
 
 **Prerequisites:**
-- Foundry Local running on `localhost:5272` with `phi-silica` model loaded
-- Python 3.10+ with Flask, OpenAI SDK
-- Demo data files in `C:\Users\{user}\Documents\Demo\My_Day\`
+- Foundry Local installed (`winget install Microsoft.FoundryLocal`)
+- Python 3.10+ with Flask, OpenAI SDK, `foundry-local-sdk` (NOT the fake `foundry-local` pip package)
+- Demo data ships in `demo_data/` within the project directory (self-contained)
+- Run `setup.ps1` on a new device to install everything automatically
+
+**Cross-platform notes:**
+- On Windows-on-ARM, `platform.machine()` and `PROCESSOR_ARCHITECTURE` may report `AMD64`/`X64` due to emulation. Detection uses WMI CPU name as the authoritative source.
+- The pip package `foundry-local` (v0.0.1) is a squatted fake. The real SDK is `foundry-local-sdk`.
 
 ## Architecture Notes
 
@@ -78,10 +85,13 @@ On-device OCR (Tesseract.js) + AI analysis for document verification.
 
 ## Demo Data Location
 
-- Calendar: `Documents/Demo/My_Day/calendar.ics`
-- Tasks: `Documents/Demo/My_Day/tasks.csv`
-- Emails: `Documents/Demo/My_Day/Inbox/*.eml`
-- Meeting transcript: `Documents/Demo/Board_Strategy_Review_Transcript_Jan2026.txt`
+All demo data lives in `demo_data/` within the project directory (self-contained, no external paths):
+
+- Calendar: `demo_data/My_Day/calendar.ics`
+- Tasks: `demo_data/My_Day/tasks.csv`
+- Emails: `demo_data/My_Day/Inbox/*.eml`
+- Meeting transcript: `demo_data/Board_Strategy_Review_Transcript_Jan2026.txt`
+- NDA contract: `demo_data/contract_nda_vertex_pinnacle.txt`
 
 ## Common Debugging
 

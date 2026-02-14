@@ -1,23 +1,51 @@
 # ============================================================
-# Surface Copilot+ PC — NPU Demo Setup Script
+# Copilot+ PC — NPU Demo Setup Script
+# Works on Intel Core Ultra (x64) and Qualcomm Snapdragon (ARM64)
 # ============================================================
-# Run as Administrator in PowerShell
+# Run in PowerShell (admin NOT required — all installs are user-scope)
 # ============================================================
 
-Write-Host ""
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "  Surface Copilot+ PC - NPU Demo Setup" -ForegroundColor Cyan
-Write-Host "  Powered by Foundry Local + Phi-4 Mini" -ForegroundColor Cyan
-Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host ""
+# --- Detect silicon ---
+# NOTE: On Windows-on-ARM, OSArchitecture may report X64 when running
+# under emulation. Use CPU name from WMI as the authoritative source.
+$cpuName = (Get-CimInstance Win32_Processor).Name
+$isARM = ($cpuName -match "Qualcomm|Snapdragon")
 
-# Check if running as admin
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
-    Write-Host "!! Please run this script as Administrator!" -ForegroundColor Yellow
-    Write-Host "   Right-click PowerShell -> Run as Administrator" -ForegroundColor Yellow
-    exit 1
+if ($isARM) {
+    $silicon = "Qualcomm"
+    $chipLabel = "Snapdragon X NPU"
+    $modelAlias = "qwen2.5-7b"
+    $modelLabel = "Qwen 2.5 7B"
+} elseif ($cpuName -match "Intel") {
+    $silicon = "Intel"
+    $chipLabel = "Intel Core Ultra NPU"
+    $modelAlias = "phi-4-mini"
+    $modelLabel = "Phi-4 Mini"
+} else {
+    # Fallback: check OS architecture
+    $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+    if ($osArch -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
+        $silicon = "ARM64"
+        $chipLabel = "ARM64 NPU"
+        $isARM = $true
+        $modelAlias = "qwen2.5-7b"
+        $modelLabel = "Qwen 2.5 7B"
+    } else {
+        $silicon = "Intel"
+        $chipLabel = "Intel Core Ultra NPU"
+        $modelAlias = "phi-4-mini"
+        $modelLabel = "Phi-4 Mini"
+    }
 }
+
+Write-Host ""
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "  Copilot+ PC - NPU Demo Setup" -ForegroundColor Cyan
+Write-Host "  Detected: $cpuName" -ForegroundColor Cyan
+Write-Host "  Platform: $silicon — $chipLabel" -ForegroundColor Cyan
+Write-Host "  Model: $modelLabel ($modelAlias)" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host ""
 
 # Get script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -32,7 +60,9 @@ Write-Host "Step 1: Checking Python installation..." -ForegroundColor Yellow
 $pythonInstalled = $false
 try {
     $pythonVersion = python --version 2>&1
-    if ($pythonVersion -match "Python 3") {
+    # Guard against the Windows Store stub, which prints an error
+    # string instead of "Python 3.x.x" and returns non-zero.
+    if ($LASTEXITCODE -eq 0 -and $pythonVersion -match "Python 3") {
         Write-Host "[OK] Python already installed: $pythonVersion" -ForegroundColor Green
         $pythonInstalled = $true
     }
@@ -41,54 +71,105 @@ try {
 }
 
 if (-not $pythonInstalled) {
-    Write-Host "Downloading Python ARM64..." -ForegroundColor Cyan
-    $pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-arm64.exe"
-    $pythonInstaller = "$env:TEMP\python-arm64.exe"
-
+    # winget auto-detects ARM64 vs x64 and picks the right installer
+    Write-Host "Installing Python 3.11 via winget (auto-detects architecture)..." -ForegroundColor Cyan
     try {
-        Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonInstaller -UseBasicParsing
-        Write-Host "Installing Python (this may take a minute)..." -ForegroundColor Cyan
-        Write-Host "   CHECK 'Add Python to PATH' in the installer!" -ForegroundColor Yellow
-        Start-Process $pythonInstaller -ArgumentList "/passive", "InstallAllUsers=1", "PrependPath=1" -Wait
-        Write-Host "[OK] Python installed" -ForegroundColor Green
-
-        # Refresh PATH
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        winget install Python.Python.3.11 --accept-source-agreements --accept-package-agreements --scope user 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Python installed" -ForegroundColor Green
+        } else {
+            throw "winget returned non-zero"
+        }
     } catch {
-        Write-Host "[FAIL] Failed to install Python. Please install manually from python.org" -ForegroundColor Red
-        Write-Host "   Download ARM64 version: https://www.python.org/downloads/windows/" -ForegroundColor Yellow
+        Write-Host "[WARN] winget install failed. Trying direct download..." -ForegroundColor Yellow
+        if ($isARM) {
+            $pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-arm64.exe"
+        } else {
+            $pythonUrl = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+        }
+        $pythonInstaller = "$env:TEMP\python-installer.exe"
+        try {
+            Invoke-WebRequest -Uri $pythonUrl -OutFile $pythonInstaller -UseBasicParsing
+            Write-Host "Installing Python..." -ForegroundColor Cyan
+            Start-Process $pythonInstaller -ArgumentList "/passive", "InstallAllUsers=0", "PrependPath=1" -Wait
+            Write-Host "[OK] Python installed" -ForegroundColor Green
+        } catch {
+            Write-Host "[FAIL] Could not install Python. Please install manually:" -ForegroundColor Red
+            Write-Host "   https://www.python.org/downloads/windows/" -ForegroundColor Yellow
+            Write-Host "   (Choose ARM64 for Snapdragon, x64 for Intel)" -ForegroundColor Yellow
+        }
     }
+
+    # Refresh PATH so python/pip are available in this session
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
 }
 
 Write-Host ""
 
 # ============================================================
-# Step 2: Install Python Dependencies
+# Step 2: Install Foundry Local (if not already installed)
 # ============================================================
-Write-Host "Step 2: Installing Python dependencies..." -ForegroundColor Yellow
+Write-Host "Step 2: Checking Foundry Local installation..." -ForegroundColor Yellow
+
+$foundryInstalled = $false
+try {
+    $foundryCheck = foundry --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] Foundry Local CLI already installed: $foundryCheck" -ForegroundColor Green
+        $foundryInstalled = $true
+    }
+} catch {
+    $foundryInstalled = $false
+}
+
+if (-not $foundryInstalled) {
+    Write-Host "Installing Foundry Local via winget..." -ForegroundColor Cyan
+    try {
+        winget install Microsoft.FoundryLocal --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Foundry Local installed" -ForegroundColor Green
+            $foundryInstalled = $true
+        } else {
+            throw "winget returned non-zero"
+        }
+    } catch {
+        Write-Host "[FAIL] Could not install Foundry Local." -ForegroundColor Red
+        Write-Host "   Try manually: winget install Microsoft.FoundryLocal" -ForegroundColor Yellow
+    }
+
+    # Refresh PATH
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+}
+
+Write-Host ""
+
+# ============================================================
+# Step 3: Install Python Dependencies
+# ============================================================
+Write-Host "Step 3: Installing Python dependencies..." -ForegroundColor Yellow
 
 $requirementsPath = Join-Path $ScriptDir "requirements.txt"
 
 try {
-    pip install -r $requirementsPath --break-system-packages 2>&1 | Out-Null
+    pip install -r $requirementsPath 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] Python dependencies installed" -ForegroundColor Green
     } else {
         Write-Host "   Trying individual package install..." -ForegroundColor Gray
-        pip install flask openai pypdf python-docx foundry-local --break-system-packages
+        pip install flask openai pypdf python-docx foundry-local-sdk
         Write-Host "[OK] Python dependencies installed" -ForegroundColor Green
     }
 } catch {
     Write-Host "[WARN] Some packages may have failed. Try manually:" -ForegroundColor Yellow
-    Write-Host "   pip install flask openai pypdf python-docx foundry-local" -ForegroundColor Cyan
+    Write-Host "   pip install flask openai pypdf python-docx foundry-local-sdk" -ForegroundColor Cyan
 }
 
 Write-Host ""
 
 # ============================================================
-# Step 3: Verify demo files exist
+# Step 4: Verify demo files exist
 # ============================================================
-Write-Host "Step 3: Verifying demo files..." -ForegroundColor Yellow
+Write-Host "Step 4: Verifying demo files..." -ForegroundColor Yellow
 
 $requiredFiles = @(
     "npu_demo_flask.py",
@@ -118,11 +199,12 @@ if (Test-Path $tesseractDir) {
 Write-Host ""
 
 # ============================================================
-# Step 4: Setup demo data
+# Step 5: Setup demo data
 # ============================================================
-Write-Host "Step 4: Setting up demo data..." -ForegroundColor Yellow
+Write-Host "Step 5: Setting up demo data..." -ForegroundColor Yellow
 
-$demoDir = Join-Path $env:USERPROFILE "Documents\Demo"
+# Demo data lives inside the project repo (demo_data/) so it's self-contained
+$demoDir = Join-Path $PSScriptRoot "demo_data"
 $myDayDir = Join-Path $demoDir "My_Day"
 $inboxDir = Join-Path $myDayDir "Inbox"
 
@@ -132,28 +214,51 @@ if (Test-Path $myDayDir) {
     Write-Host "[INFO] Creating demo data directory: $myDayDir" -ForegroundColor Cyan
     New-Item -Path $inboxDir -ItemType Directory -Force | Out-Null
     Write-Host "[OK] Demo data directory created" -ForegroundColor Green
-    Write-Host "[WARN] You'll need to copy demo data files (calendar.ics, tasks.csv, emails)" -ForegroundColor Yellow
+    Write-Host "[WARN] Add demo data files (calendar.ics, tasks.csv, emails) to $myDayDir" -ForegroundColor Yellow
 }
 
 Write-Host ""
 
 # ============================================================
-# Step 5: Test Foundry Local
+# Step 6: Test Foundry Local SDK
 # ============================================================
-Write-Host "Step 5: Testing Foundry Local SDK..." -ForegroundColor Yellow
+Write-Host "Step 6: Testing Foundry Local SDK..." -ForegroundColor Yellow
 
 try {
     $testResult = python -c "from foundry_local import FoundryLocalManager; print('OK')" 2>&1
     if ($testResult -match "OK") {
-        Write-Host "[OK] Foundry Local SDK installed" -ForegroundColor Green
-        Write-Host "   The app will automatically download and start phi-4-mini on first run" -ForegroundColor Gray
+        Write-Host "[OK] Foundry Local SDK is importable" -ForegroundColor Green
+        Write-Host "   The app will auto-download $modelAlias on first run" -ForegroundColor Gray
     } else {
-        Write-Host "[WARN] Foundry Local SDK test failed" -ForegroundColor Yellow
-        Write-Host "   Try: pip install foundry-local" -ForegroundColor Cyan
+        Write-Host "[WARN] Foundry Local SDK import failed" -ForegroundColor Yellow
+        Write-Host "   Try: pip install foundry-local-sdk" -ForegroundColor Cyan
     }
 } catch {
     Write-Host "[WARN] Could not verify Foundry Local SDK" -ForegroundColor Yellow
-    Write-Host "   Try: pip install foundry-local" -ForegroundColor Cyan
+    Write-Host "   Try: pip install foundry-local-sdk" -ForegroundColor Cyan
+}
+
+Write-Host ""
+
+# ============================================================
+# Step 7: Pre-download model (optional but saves time on first run)
+# ============================================================
+Write-Host "Step 7: Checking model availability..." -ForegroundColor Yellow
+
+if ($foundryInstalled) {
+    try {
+        $modelList = foundry model list 2>&1
+        if ($modelList -match $modelAlias) {
+            Write-Host "[OK] $modelLabel ($modelAlias) is available in Foundry catalog" -ForegroundColor Green
+            Write-Host "   First run will download the model (~3 GB) if not already cached" -ForegroundColor Gray
+        } else {
+            Write-Host "[WARN] $modelAlias not found in catalog" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[SKIP] Could not check model catalog" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "[SKIP] Foundry Local not installed — skipping model check" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -164,6 +269,10 @@ Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Setup Complete" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  Silicon:  $cpuName" -ForegroundColor White
+Write-Host "  Platform: $silicon — $chipLabel" -ForegroundColor White
+Write-Host "  Model:    $modelLabel ($modelAlias)" -ForegroundColor White
 Write-Host ""
 
 if ($missingFiles.Count -gt 0) {
@@ -181,6 +290,6 @@ Write-Host ""
 Write-Host "Then open: http://localhost:5000" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "No VS Code or AI Toolkit required!" -ForegroundColor Green
-Write-Host "Foundry Local handles model download and runtime automatically." -ForegroundColor Gray
+Write-Host "Silicon auto-detected: the app will brand itself for $chipLabel." -ForegroundColor Gray
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan

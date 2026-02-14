@@ -117,7 +117,7 @@ On first run, Foundry Local will download the Phi-4 Mini model (~2 GB). Subseque
 
 ## Demo Data
 
-The `demo_data/` folder contains sample files that `run.bat` auto-copies to `Documents\Demo\` on first launch:
+The `demo_data/` folder ships with the repo and is read directly by the app — no copying needed:
 
 | Path | Contents |
 |------|----------|

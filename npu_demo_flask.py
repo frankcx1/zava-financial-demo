@@ -1,11 +1,12 @@
 """
 Local NPU AI Assistant Demo
 Document Analysis + Chat + ID Verification
-Runs entirely on-device using Foundry Local + Intel Core Ultra NPU
+Runs entirely on-device using Foundry Local — Intel Core Ultra or Snapdragon X NPU
 """
 
 import os
 import json
+import platform
 import re
 import subprocess
 import threading
@@ -19,26 +20,113 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# --- Silicon auto-detection ---
+def detect_silicon():
+    """Detect whether we're running on Intel Core Ultra or Qualcomm Snapdragon.
+
+    On Windows-on-ARM, Python x64 runs under emulation so
+    platform.machine() often reports 'AMD64'.  We therefore always
+    check the actual CPU name via WMI as the authoritative source.
+    """
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "(Get-CimInstance Win32_Processor).Name"],
+            capture_output=True, text=True, timeout=5,
+        )
+        cpu = result.stdout.strip().lower()
+        if "qualcomm" in cpu or "snapdragon" in cpu:
+            return "qualcomm"
+        if "intel" in cpu:
+            return "intel"
+    except Exception:
+        pass
+    # Fallback: use architecture hint
+    arch = platform.machine().lower()
+    if arch in ("arm64", "aarch64"):
+        return "arm64"
+    return "intel"
+
+SILICON = detect_silicon()
+
+if SILICON == "qualcomm":
+    CHIP_LABEL   = "Snapdragon X NPU"
+    DEVICE_LABEL = "Copilot+ PC"
+    EDITION_TAG  = "Qualcomm Edition"
+elif SILICON == "arm64":
+    CHIP_LABEL   = "ARM64 NPU"
+    DEVICE_LABEL = "Copilot+ PC"
+    EDITION_TAG  = "ARM64 Edition"
+else:
+    CHIP_LABEL   = "Intel Core Ultra NPU"
+    DEVICE_LABEL = "Microsoft Surface + Copilot+ PC"
+    EDITION_TAG  = "Intel Edition"
+
+# --- Model selection per silicon ---
+# On Intel: phi-4-mini runs on NPU natively via OpenVINO.
+# On Qualcomm: phi-3.5-mini and phi-3-mini QNN NPU variants crash on inference.
+#   qwen2.5-7b QNN NPU variant works reliably (~5-20s, tool-calling support).
+if SILICON == "qualcomm":
+    MODEL_ALIAS = "qwen2.5-7b"
+    MODEL_LABEL = "Qwen 2.5 7B"
+else:
+    MODEL_ALIAS = "phi-4-mini"
+    MODEL_LABEL = "Phi-4 Mini"
+
 # --- Model initialization via Foundry Local SDK (fallback to localhost:5272) ---
-print("Starting Foundry Local runtime...", flush=True)
+print(f"Starting Foundry Local runtime (model: {MODEL_ALIAS})...", flush=True)
 FOUNDRY_AVAILABLE = False
 try:
     from foundry_local import FoundryLocalManager
-    MODEL_ALIAS = "phi-4-mini"
     manager = FoundryLocalManager(MODEL_ALIAS)
     MODEL_ID = manager.get_model_info(MODEL_ALIAS).id
     client = OpenAI(base_url=manager.endpoint, api_key=manager.api_key)
     DEFAULT_MODEL = MODEL_ID
     FOUNDRY_AVAILABLE = True
 except Exception:
+    manager = None
     client = OpenAI(base_url="http://localhost:5272/v1", api_key="not-needed")
-    DEFAULT_MODEL = "phi-4-mini"
+    DEFAULT_MODEL = MODEL_ALIAS
+
+import threading as _threading
+_reconnect_lock = _threading.Lock()
+
+def _reconnect_foundry():
+    """Re-initialize Foundry connection when the service restarts on a new port."""
+    global client, manager, DEFAULT_MODEL, MODEL_ID, FOUNDRY_AVAILABLE
+    with _reconnect_lock:
+        try:
+            manager = FoundryLocalManager(MODEL_ALIAS)
+            MODEL_ID = manager.get_model_info(MODEL_ALIAS).id
+            client = OpenAI(base_url=manager.endpoint, api_key=manager.api_key)
+            DEFAULT_MODEL = MODEL_ID
+            FOUNDRY_AVAILABLE = True
+            print(f"  Reconnected to Foundry: {manager.endpoint}", flush=True)
+            return True
+        except Exception as e:
+            print(f"  Reconnect failed: {e}", flush=True)
+            return False
+
+def foundry_chat(retries=1, **kwargs):
+    """Wrapper around client.chat.completions.create with auto-reconnect."""
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception as e:
+        if retries > 0 and ("Connection" in str(type(e).__name__) or "Connection" in str(e)):
+            print(f"  Foundry connection lost, reconnecting...", flush=True)
+            if _reconnect_foundry():
+                kwargs["model"] = DEFAULT_MODEL
+                return client.chat.completions.create(**kwargs)
+        raise
 
 # --- Model readiness flag (set after warmup) ---
 MODEL_READY = False
 
 # --- Agent infrastructure ---
-DEMO_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Demo")
+# Demo data lives alongside the app so the repo is self-contained.
+# Resolves to <project_root>/demo_data regardless of working directory.
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEMO_DIR = os.path.join(_APP_DIR, "demo_data")
 os.makedirs(DEMO_DIR, exist_ok=True)
 
 # Create demo NDA file for Clean Room Auditor if it doesn't exist
@@ -224,17 +312,20 @@ def _track_model_call(response, elapsed_seconds):
 
 
 AGENT_SYSTEM_PROMPT = (
-    'You are Phi, a helpful AI assistant running on a Windows PC. You have these tools:\n\n'
+    'You are a helpful AI assistant running locally on a Windows PC. You have these tools:\n\n'
     '- read(path): VIEW or READ an existing file\n'
     '- write(path, content): CREATE or SAVE a NEW file with content\n'
     '- exec(command): RUN a shell command. The shell is PowerShell \u2014 use cmdlets like '
     'Get-ChildItem, Get-Content, Get-Date, Enable-NetAdapter, Disable-NetAdapter directly. '
     'Do NOT wrap in "PowerShell -Command".\n\n'
     'RULES:\n'
-    '- For general knowledge questions, conversational questions, or anything you can answer '
-    'from your own knowledge, just respond directly in plain text. Do NOT use tools.\n'
+    '- For general knowledge questions, conversational questions, security explanations, '
+    'IT policy guidance, or anything you can answer from your own knowledge, just respond '
+    'directly in plain text. Do NOT use tools.\n'
     '- ONLY use tools when the user explicitly asks to read a file, write a file, list a '
     'directory, run a command, or interact with the local system.\n'
+    '- Questions like "What are the risks of X?" or "Should I close port Y?" are knowledge '
+    'questions — answer them directly without running commands.\n'
     '- Use "write" to CREATE files (needs path + content). Use "read" to VIEW files.\n'
     '- For "exec", ONLY provide "command". Do NOT add env, workdir, or other params.\n'
     '- Use Windows backslash paths: C:\\Users\\file.txt\n'
@@ -363,7 +454,7 @@ def parse_inbox(inbox_dir):
 
 
 def compress_for_briefing(events, tasks, emails):
-    """Compress all data into compact text for Phi-4 Mini's ~1K prompt limit."""
+    """Compress all data into compact text for the model's prompt limit."""
     lines = ['TODAY: Sat Feb 7 2026\n']
 
     # Calendar — top 5 events, short format
@@ -388,9 +479,10 @@ def compress_for_briefing(events, tasks, emails):
         lines.append(f'- {frm}: {subj}')
 
     result = '\n'.join(lines)
-    # Hard cap — phi-4-mini NPU has 1024 token max prompt
-    if len(result) > 1200:
-        result = result[:1200]
+    # Hard cap — phi-4-mini has ~1K token prompt limit; Qwen 2.5 has ~32K
+    _char_limit = 3600 if SILICON == "qualcomm" else 1200
+    if len(result) > _char_limit:
+        result = result[:_char_limit]
     return result
 
 
@@ -1768,16 +1860,42 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .confidence-medium { color: #FFB900; }
         .confidence-low { color: #FF4444; }
 
-        /* Router analysis text */
+        /* Auditor analysis text */
         .router-analysis {
-            background: rgba(255,255,255,0.04);
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 10px;
             padding: 16px 20px;
             margin: 16px auto;
             max-width: 640px;
             font-size: 0.92em;
             line-height: 1.6;
+            color: #e0e0e0;
+        }
+        .router-analysis:empty { display: none; }
+
+        /* Document preview card in processing log */
+        .doc-preview-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin: 8px 0;
+        }
+        .doc-preview-text {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.8em;
+            opacity: 0.4;
+            margin-top: 6px;
+            max-height: 60px;
+            overflow: hidden;
+            line-height: 1.4;
             white-space: pre-wrap;
+        }
+
+        /* Progressive decision card row reveal */
+        .decision-card-row {
+            transition: opacity 0.4s ease;
         }
 
         /* Escalation Consent */
@@ -1973,7 +2091,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <img src="/logos/copilot-logo.avif" alt="Copilot+" onerror="this.style.display='none'">
         </div>
         <div class="warmup-title">Local NPU AI Assistant</div>
-        <div class="warmup-status" id="warmupStatus">Loading Phi-4 Mini on NPU...</div>
+        <div class="warmup-status" id="warmupStatus">Loading {{MODEL_LABEL}} on NPU...</div>
         <div class="warmup-bar-track"><div class="warmup-bar-fill" id="warmupBar"></div></div>
         <div class="warmup-time" id="warmupTime"></div>
     </div>
@@ -1994,11 +2112,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         <nav class="sidebar-nav">
           <a class="sidebar-nav-item active" data-tab="chat">
             <span class="nav-icon">&#129302;</span>
-            <span class="sidebar-label">AI Agent<span class="sidebar-nav-sub">Chat &amp; Tooling with Phi</span></span>
-          </a>
-          <a class="sidebar-nav-item" data-tab="router">
-            <span class="nav-icon">&#129504;</span>
-            <span class="sidebar-label">Two-Brain<span class="sidebar-nav-sub">Local vs. Frontier Router</span></span>
+            <span class="sidebar-label">AI Agent<span class="sidebar-nav-sub">Chat &amp; Tooling with {{MODEL_LABEL}}</span></span>
           </a>
           <a class="sidebar-nav-item" data-tab="day">
             <span class="nav-icon">&#9728;&#65039;</span>
@@ -2023,7 +2137,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <div class="savings-stat" id="savingsCO2">&#127793; 0g CO&#8322; avoided</div>
             <div class="savings-stat savings-stat-compact" id="savingsCompact">&#128994; $0.00</div>
           </div>
-          <span class="badge" style="text-align:center;">&#9889; Intel Core Ultra NPU</span>
+          <span class="badge" style="text-align:center;">&#9889; {{CHIP_LABEL}}</span>
           <span class="offline-badge" id="offlineBadge">Online</span>
           <div class="sidebar-footer-controls">
             <div class="sidebar-footer-label">Network</div>
@@ -2032,7 +2146,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <div class="model-selector" style="margin:0;">
               <label for="modelSelect">Model:</label>
               <select id="modelSelect">
-                <option value="phi-4-mini">Phi-4 Mini (NPU)</option>
+                <option value="{{MODEL_ALIAS}}">{{MODEL_LABEL}} (NPU)</option>
               </select>
             </div>
           </div>
@@ -2046,7 +2160,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         <div class="tabs" style="display:none;">
             <button class="tab-btn" id="dayTabBtn">My Day</button>
             <button class="tab-btn active" id="chatTabBtn">AI Agent</button>
-            <button class="tab-btn" id="routerTabBtn">Two-Brain Router</button>
             <button class="tab-btn" id="auditorTabBtn">&#128274; Auditor</button>
             <button class="tab-btn" id="idTabBtn">ID Verification</button>
         </div>
@@ -2109,7 +2222,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 </div>
             </div>
 
-            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
+            <div class="tab-footer">{{DEVICE_LABEL}} &mdash; {{MODEL_LABEL}} on {{CHIP_LABEL}} &mdash; All processing happens locally</div>
         </div>
 
         <!-- Agent Chat Tab -->
@@ -2139,10 +2252,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 <button class="suggestion-chip" data-action="device-health">
                   <span class="chip-icon">&#128737;</span>
                   <span>Device Health</span>
-                </button>
-                <button class="suggestion-chip" data-action="two-brain">
-                  <span class="chip-icon">&#129504;</span>
-                  <span>Two-Brain Analysis</span>
                 </button>
               </div>
             </div>
@@ -2207,20 +2316,20 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <button id="qpSaveSummary" style="display:none;"></button>
             <span id="agentFileName" style="display:none;"></span>
 
-            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
+            <div class="tab-footer">{{DEVICE_LABEL}} &mdash; {{MODEL_LABEL}} on {{CHIP_LABEL}} &mdash; All processing happens locally</div>
           </div>
         </div>
 
-        <!-- Two-Brain Router Tab -->
-        <div id="router-tab" class="tab-content">
-            <div class="auditor-header">&#129504; TWO-BRAIN ROUTER</div>
+        <!-- Auditor Tab (unified: structured analysis + smart escalation) -->
+        <div id="auditor-tab" class="tab-content">
+            <div class="auditor-header">&#128274; AUDITOR</div>
 
             <!-- State 1: Input Zone -->
             <div id="routerInputZone">
                 <div class="auditor-dropzone" id="routerDropzone">
-                    <div class="dropzone-icon">&#129504;</div>
-                    <div class="dropzone-title">Drop a document or ask a question</div>
-                    <div class="dropzone-subtitle">Local AI attempts first. You control what (if anything) goes to the cloud.</div>
+                    <div class="dropzone-icon">&#128274;</div>
+                    <div class="dropzone-title">Drop a confidential document</div>
+                    <div class="dropzone-subtitle">Full analysis runs on-device. Smart escalation if expert review needed.</div>
                     <input type="file" id="routerFileInput" accept=".pdf,.docx,.txt,.md" style="display:none;">
                     <button class="auditor-upload-btn" id="routerUploadBtn">Select File</button>
                     <div class="dropzone-formats">PDF &bull; DOCX &bull; TXT &bull; MD</div>
@@ -2234,16 +2343,20 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 </div>
                 <div class="auditor-demo-section" style="margin-top:20px;">
                     <div style="opacity:0.6;font-size:0.9em;margin-bottom:8px;">Quick demo:</div>
-                    <button class="auditor-demo-btn" id="routerDemoBtn">&#128196; Analyze Demo NDA with Router</button>
+                    <button class="auditor-demo-btn" id="routerDemoBtn">&#128196; Analyze Demo NDA</button>
+                    <button class="auditor-demo-btn" id="routerEscalationDemoBtn" style="margin-top:8px;border-color:rgba(255,185,0,0.4);color:#FFB900;">&#9888;&#65039; Demo: Escalation Path</button>
                 </div>
             </div>
 
-            <!-- State 2: Decision Card -->
+            <!-- State 2: Results -->
             <div id="routerDecision" style="display:none;">
                 <div id="routerStatusArea" class="processing-log">
-                    <div class="processing-log-header">&#129504; ROUTER PROCESSING</div>
+                    <div class="processing-log-header">&#128203; PROCESSING LOG</div>
                     <div class="processing-log-content" id="routerStatusLog"></div>
                 </div>
+
+                <!-- Structured Results Cards (PII, Risk, Obligations, Summary) -->
+                <div id="auditorResultsCards"></div>
 
                 <div id="routerDecisionCard" style="display:none;">
                     <div class="decision-card">
@@ -2311,82 +2424,15 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
                     <!-- Post-action buttons -->
                     <div id="routerPostActions" style="display:none;text-align:center;margin-top:16px;">
-                        <button class="auditor-action-btn" onclick="resetRouter()">&#129504; Analyze Another Document</button>
+                        <button class="auditor-action-btn" onclick="resetAuditor()">&#128274; Analyze Another Document</button>
                     </div>
                 </div>
-            </div>
-
-            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
-        </div>
-
-        <!-- Clean Room Auditor Tab -->
-        <div id="auditor-tab" class="tab-content">
-            <div class="auditor-header">&#128274; CLEAN ROOM AUDITOR</div>
-            <!-- State 1: Upload Zone -->
-            <div id="auditorUploadZone" class="auditor-upload-zone">
-                <div class="auditor-dropzone" id="auditorDropzone">
-                    <div class="dropzone-icon">&#128737;&#65039;</div>
-                    <div class="dropzone-title">Drop a confidential document</div>
-                    <div class="dropzone-subtitle">Analysis runs entirely on this device.<br><span style="color:#00CC6A;">No data egress. No cloud calls.</span></div>
-                    <input type="file" id="auditorFileInput" accept=".pdf,.docx,.txt,.md" style="display:none;">
-                    <button class="auditor-upload-btn">Select File</button>
-                    <div class="dropzone-formats">PDF • DOCX • TXT • MD — Max 16MB</div>
-                </div>
-                <div class="auditor-demo-section">
-                    <div style="opacity:0.6;font-size:0.9em;margin-bottom:8px;">Pre-staged for demo:</div>
-                    <div style="font-family:monospace;opacity:0.8;margin-bottom:10px;">contract_nda_vertex_pinnacle.txt</div>
-                    <button class="auditor-demo-btn" id="loadDemoDocBtn">&#128196; Load Demo Document</button>
-                </div>
-            </div>
-
-            <!-- State 2: Document Staged -->
-            <div id="auditorStaged" class="auditor-staged" style="display:none;">
-                <div class="auditor-doc-card">
-                    <div class="doc-card-header">
-                        <span class="doc-icon">&#128196;</span>
-                        <div class="doc-info">
-                            <div class="doc-name" id="auditorDocName">document.txt</div>
-                            <div class="doc-meta" id="auditorDocMeta">Loading...</div>
-                        </div>
-                    </div>
-                    <div class="doc-preview" id="auditorDocPreview"></div>
-                </div>
-                <div class="auditor-actions">
-                    <div class="auditor-action-row">
-                        <button class="auditor-action-btn" id="btnRiskScan">&#9888;&#65039; Risk Scan</button>
-                        <button class="auditor-action-btn" id="btnObligations">&#128203; Extract Obligations</button>
-                        <button class="auditor-action-btn" id="btnPiiScan">&#128272; PII Detection</button>
-                    </div>
-                    <button class="auditor-full-audit-btn" id="btnFullAudit">&#128269; Full Audit</button>
-                </div>
-                <div class="auditor-back-link">
-                    <a href="#" onclick="resetAuditor(); return false;">&#8592; Load Different Document</a>
-                </div>
-            </div>
-
-            <!-- State 3: Analysis Results -->
-            <div id="auditorResults" class="auditor-results" style="display:none;">
-                <div class="auditor-doc-summary" id="auditorResultsDocSummary"></div>
-
-                <!-- Processing Log (verbose mode for demo) -->
-                <div class="processing-log" id="processingLog">
-                    <div class="processing-log-header">&#128203; PROCESSING LOG</div>
-                    <div class="processing-log-content" id="processingLogContent"></div>
-                </div>
-
-                <!-- Results Cards (populated dynamically) -->
-                <div id="auditorResultsCards"></div>
 
                 <!-- Audit Stamp -->
                 <div class="audit-stamp" id="auditStamp" style="display:none;"></div>
-
-                <!-- Action Buttons -->
-                <div class="auditor-results-actions" id="auditorResultsActions" style="display:none;">
-                    <button class="auditor-action-btn" onclick="rerunAudit()">&#128269; Run Another Audit</button>
-                    <button class="auditor-action-btn secondary" onclick="resetAuditor()">&#128196; Load Different Doc</button>
-                </div>
             </div>
-            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
+
+            <div class="tab-footer">{{DEVICE_LABEL}} &mdash; {{MODEL_LABEL}} on {{CHIP_LABEL}} &mdash; All processing happens locally</div>
         </div>
 
         <!-- ID Verification Tab -->
@@ -2433,7 +2479,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 <div class="step" id="step3">
                     <div class="step-icon step-pending">3</div>
                     <div class="step-text">AI Analysis</div>
-                    <div class="step-status">Phi-4 Mini on NPU (Local)</div>
+                    <div class="step-status">{{MODEL_LABEL}} on NPU (Local)</div>
                 </div>
             </div>
             
@@ -2457,11 +2503,11 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     Your ID image and data never leave this device. Camera capture, OCR, and AI analysis all run locally.
                 </div>
             </div>
-            <div class="tab-footer">Microsoft Surface + Copilot+ PC &mdash; Phi-4 Mini on Intel Core Ultra NPU &mdash; All processing happens locally</div>
+            <div class="tab-footer">{{DEVICE_LABEL}} &mdash; {{MODEL_LABEL}} on {{CHIP_LABEL}} &mdash; All processing happens locally</div>
         </div>
 
         <footer>
-            Microsoft Surface + Copilot+ PC - Phi-4 Mini on Intel Core Ultra NPU - All processing happens locally
+            {{DEVICE_LABEL}} - {{MODEL_LABEL}} on {{CHIP_LABEL}} - All processing happens locally
         </footer>
         </div><!-- /.container -->
       </main>
@@ -2503,7 +2549,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         console.log("Script starting...");
 
-        var currentModel = "phi-4-mini";
+        var currentModel = "{{MODEL_ALIAS}}";
         var cameraStream = null;
         
         document.addEventListener("DOMContentLoaded", function() {
@@ -2600,8 +2646,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             var tabMap = {
                 day:     { tabId: "day-tab",     btnId: "dayTabBtn",     toast: "Same local AI \u2014 now reading your day" },
                 chat:    { tabId: "chat-tab",    btnId: "chatTabBtn",    toast: "Same local AI \u2014 now with execution tools" },
-                router:  { tabId: "router-tab",  btnId: "routerTabBtn",  toast: "Two-Brain Router \u2014 local vs. frontier" },
-                auditor: { tabId: "auditor-tab", btnId: "auditorTabBtn", toast: "Same local AI \u2014 now in clean room mode" },
+                auditor: { tabId: "auditor-tab", btnId: "auditorTabBtn", toast: "Same local AI \u2014 structured analysis + smart escalation" },
                 id:      { tabId: "id-tab",      btnId: "idTabBtn",     toast: "Same local AI \u2014 now verifying identity" }
             };
             document.querySelectorAll(".sidebar-nav-item").forEach(function(item) {
@@ -2713,40 +2758,37 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             });
 
             // --- Network toggle buttons (header) ---
+            function handleNetworkToggle(btn, action, label) {
+                btn.disabled = true;
+                btn.textContent = action === 'offline' ? 'Disabling...' : 'Enabling...';
+                fetch("/network-toggle", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({action: action})
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    btn.textContent = label;
+                    btn.disabled = false;
+                    if (data.success) {
+                        setTimeout(checkConnectivity, 1500);
+                    } else {
+                        // Show UAC prompt hint if elevation is needed
+                        var msg = data.error || 'Failed to toggle network.';
+                        if (msg.indexOf('Administrator') >= 0) {
+                            alert('Network toggle requires admin rights.\\nRestart the app as Administrator (right-click \u2192 Run as admin).');
+                        } else {
+                            alert(msg);
+                        }
+                    }
+                }).catch(function() {
+                    btn.textContent = label;
+                    btn.disabled = false;
+                });
+            }
             document.getElementById("goOfflineBtn").addEventListener("click", function() {
-                var btn = this;
-                btn.disabled = true;
-                btn.textContent = "Disabling...";
-                fetch("/network-toggle", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({action: "offline"})
-                }).then(function() {
-                    btn.textContent = "\u2708\uFE0F Go Offline";
-                    btn.disabled = false;
-                    setTimeout(checkConnectivity, 1500);
-                }).catch(function() {
-                    btn.textContent = "\u2708\uFE0F Go Offline";
-                    btn.disabled = false;
-                });
+                handleNetworkToggle(this, 'offline', '\u2708\uFE0F Go Offline');
             });
-
             document.getElementById("goOnlineBtn").addEventListener("click", function() {
-                var btn = this;
-                btn.disabled = true;
-                btn.textContent = "Enabling...";
-                fetch("/network-toggle", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({action: "online"})
-                }).then(function() {
-                    btn.textContent = "\uD83D\uDCF6 Go Online";
-                    btn.disabled = false;
-                    setTimeout(checkConnectivity, 1500);
-                }).catch(function() {
-                    btn.textContent = "\uD83D\uDCF6 Go Online";
-                    btn.disabled = false;
-                });
+                handleNetworkToggle(this, 'online', '\uD83D\uDCF6 Go Online');
             });
 
             function runBriefing(url) {
@@ -2782,9 +2824,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             document.getElementById("briefMeBtn").disabled = false; document.getElementById("focusBtn").disabled = false; document.getElementById("tomorrowBtn").disabled = false;
 
                             var text = evt.text || "";
-                            // Split into executive summary and details
-                            var parts = text.split(/\n\s*(?:PART 2|KEY DETAILS|PRIORITY|---)/i);
+                            // Strip decorative horizontal rules that some models emit
+                            text = text.replace(/\n\s*---\s*\n/g, '\n');
+                            // Strip title lines like "**MORNING BRIEFING**" at the very start
+                            text = text.replace(/^\s*\*\*[A-Z ]+\*\*\s*\n+/, '');
+                            // Split into executive summary and details.
+                            // Phi uses "PART 2 / KEY DETAILS / PRIORITY" section headers.
+                            // Qwen uses numbered bold headers like "**2. ACTIONS:**".
+                            var parts = text.split(/\n\s*(?:PART 2|KEY DETAILS|PRIORITY|\*\*\s*2[\.\)]\s)/i);
                             var summary = parts[0].replace(/^PART 1[^\n]*\n/i, '').replace(/^EXECUTIVE SUMMARY[^\n]*\n/i, '').trim();
+                            // Strip leading "**1. Summary:**" label from the summary itself
+                            summary = summary.replace(/^\*\*\d+\.\s*Summary:?\*\*\s*/i, '');
                             var details = parts.length > 1 ? parts.slice(1).join('\n') : '';
 
                             document.getElementById("execSummaryText").innerHTML = mdToHtml(summary);
@@ -2792,17 +2842,22 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             // Render details as breakdown sections
                             var breakdownArea = document.getElementById("breakdownArea");
                             if (details) {
-                                // Split by section headers (lines starting with uppercase + colon)
-                                var sections = details.split(/\n(?=[A-Z][A-Z ]+:)/);
+                                // Split by section headers:
+                                // Phi: lines starting with "ACTIONS:", "PEOPLE:", "WARNINGS:"
+                                // Qwen: lines starting with "**3. PEOPLE:**" or "ACTIONS:" etc.
+                                var sections = details.split(/\n(?=\*\*\d+\.\s*[A-Z]|\s*[A-Z][A-Z ]+:)/);
                                 var html = '';
                                 sections.forEach(function(sec) {
                                     sec = sec.trim();
                                     if (!sec) return;
                                     var firstLine = sec.split('\n')[0];
                                     var body = sec.split('\n').slice(1).join('\n').trim();
+                                    // Clean header: strip ** markers, leading numbers, trailing colons
+                                    var cleanHeader = firstLine.replace(/\*\*/g, '').replace(/^\d+[\.\)]\s*/, '').replace(/:+$/, '').trim();
+                                    if (!cleanHeader) return;  // skip empty headers
                                     html += '<div class="breakdown-section">' +
                                         '<div class="breakdown-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">' +
-                                        '<span>' + firstLine.replace(/:$/, '') + '</span><span>&#9660;</span></div>' +
+                                        '<span>' + cleanHeader + '</span><span>&#9660;</span></div>' +
                                         '<div class="breakdown-body">' + mdToHtml(body) + '</div></div>';
                                 });
                                 breakdownArea.innerHTML = html;
@@ -2985,12 +3040,45 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             }
                             summaryDiv.innerHTML = html;
                             checksDiv.appendChild(summaryDiv);
-                            // Bind Learn More click handlers
+                            // Bind Learn More click handlers — route to /knowledge (no tools)
                             summaryDiv.querySelectorAll(".health-learn-btn").forEach(function(btn) {
                                 btn.addEventListener("click", function() {
                                     var q = this.getAttribute("data-question");
-                                    document.getElementById("userInput").value = q;
-                                    sendMessage();
+                                    var btnEl = this;
+                                    btnEl.disabled = true;
+                                    btnEl.style.opacity = '0.5';
+                                    btnEl.textContent = 'Thinking...';
+                                    // Show the question as a user message in chat
+                                    addMessage('user', q);
+                                    // Call the knowledge endpoint (no tool access)
+                                    fetch('/knowledge', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({question: q})
+                                    }).then(function(resp) {
+                                        return resp.text();
+                                    }).then(function(body) {
+                                        var lines = body.trim().split('\n');
+                                        var answer = '';
+                                        var time = 0;
+                                        lines.forEach(function(line) {
+                                            try {
+                                                var evt2 = JSON.parse(line);
+                                                if (evt2.type === 'result') { answer = evt2.text; time = evt2.time; }
+                                                if (evt2.type === 'error') { answer = 'Error: ' + evt2.message; }
+                                            } catch(e) {}
+                                        });
+                                        var rendered = mdToHtml(answer || 'No response.');
+                                        if (time) rendered += '<div class="tool-time" style="margin-top:8px;font-size:0.8em;opacity:0.5;">⏱ ' + time + 's</div>';
+                                        addMessage('assistant', rendered);
+                                        btnEl.disabled = false;
+                                        btnEl.style.opacity = '1';
+                                        btnEl.textContent = btnEl.getAttribute('data-question').split('.')[0].substring(0, 20) + '… ✓';
+                                    }).catch(function(err) {
+                                        addMessage('assistant', 'Error: ' + err.message);
+                                        btnEl.disabled = false;
+                                        btnEl.style.opacity = '1';
+                                    });
                                 });
                             });
                         } else if (evt.type === "error") {
@@ -3036,8 +3124,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         document.getElementById("attachBtn").click();
                     } else if (action === "device-health") {
                         runDeviceHealth();
-                    } else if (action === "two-brain") {
-                        switchToTab("router-tab", "routerTabBtn");
                     }
                 });
             });
@@ -3298,7 +3384,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             '<button class="suggestion-chip" data-action="list-documents"><span class="chip-icon">&#128193;</span><span>List Documents</span></button>' +
                             '<button class="suggestion-chip" data-action="summarize-doc"><span class="chip-icon">&#128221;</span><span>Summarize a Document</span></button>' +
                             '<button class="suggestion-chip" data-action="device-health"><span class="chip-icon">&#128737;</span><span>Device Health</span></button>' +
-                            '<button class="suggestion-chip" data-action="two-brain"><span class="chip-icon">&#129504;</span><span>Two-Brain Analysis</span></button>' +
                         '</div></div>';
                     document.getElementById("chatContainer").insertAdjacentHTML("afterend", chipsHtml);
                     // Re-bind chip handlers
@@ -3318,8 +3403,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                 document.getElementById("attachBtn").click();
                             } else if (action === "device-health") {
                                 runDeviceHealth();
-                            } else if (action === "two-brain") {
-                                switchToTab("router-tab", "routerTabBtn");
                             }
                         });
                     });
@@ -3545,379 +3628,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             window.addEventListener("offline", updateOnlineStatus);
             updateOnlineStatus();
 
-            // === Clean Room Auditor Functions ===
-            var auditorDocText = "";
-            var auditorDocName = "";
-            var auditorAnalysisRunning = false;
-            var demoModeEnabled = false;
-
-            // Check demo mode on load (bypasses offline check for testing)
-            fetch("/demo-mode-status").then(function(r) { return r.json(); }).then(function(d) {
-                demoModeEnabled = d.demo_mode;
-                if (demoModeEnabled) {
-                    console.log("🔧 Demo mode enabled - offline check bypassed for Clean Room");
-                }
-            }).catch(function() {});
-
-            // Check if device is offline (required for Clean Room)
-            function isDeviceOffline() {
-                var badge = document.getElementById("offlineBadge");
-                return badge && badge.classList.contains("offline");
-            }
-
-            function requireOfflineForCleanRoom() {
-                // Demo mode bypasses the offline requirement for testing
-                if (demoModeEnabled) {
-                    console.log("🔧 Demo mode: bypassing offline check");
-                    return true;
-                }
-                if (!isDeviceOffline()) {
-                    alert("🔒 Clean Room Security Protocol\\n\\nConfidential documents can only be loaded when the device is OFFLINE.\\n\\nPlease click 'Go Offline' in the sidebar to disconnect from the network, then try again.\\n\\nThis ensures zero data egress during analysis.");
-                    return false;
-                }
-                return true;
-            }
-
-            // Load demo document
-            document.getElementById("loadDemoDocBtn").addEventListener("click", function() {
-                if (!requireOfflineForCleanRoom()) return;
-
-                fetch("/auditor-demo-doc")
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.error) {
-                        alert("Demo document not found: " + data.error);
-                        return;
-                    }
-                    auditorDocText = data.text;
-                    auditorDocName = data.filename;
-                    showAuditorStaged(data.filename, data.word_count, data.text);
-                });
-            });
-
-            // File upload handling - intercept the button click to check offline first
-            document.querySelector(".auditor-upload-btn").addEventListener("click", function(e) {
-                if (!requireOfflineForCleanRoom()) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                document.getElementById("auditorFileInput").click();
-            });
-
-            document.getElementById("auditorFileInput").addEventListener("change", function(e) {
-                var file = e.target.files[0];
-                if (!file) return;
-                var formData = new FormData();
-                formData.append("file", file);
-                fetch("/upload-to-demo", { method: "POST", body: formData })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.error) {
-                        alert("Upload failed: " + data.error);
-                        return;
-                    }
-                    auditorDocText = data.text || "";
-                    auditorDocName = data.filename || file.name;
-                    var wordCount = auditorDocText.split(/\s+/).length;
-                    showAuditorStaged(auditorDocName, wordCount, auditorDocText);
-                });
-            });
-
-            // Drag and drop
-            var dropzone = document.getElementById("auditorDropzone");
-            dropzone.addEventListener("dragover", function(e) {
-                e.preventDefault();
-                if (!isDeviceOffline()) return;
-                dropzone.classList.add("dragover");
-            });
-            dropzone.addEventListener("dragleave", function() {
-                dropzone.classList.remove("dragover");
-            });
-            dropzone.addEventListener("drop", function(e) {
-                e.preventDefault();
-                dropzone.classList.remove("dragover");
-                if (!requireOfflineForCleanRoom()) return;
-                var file = e.dataTransfer.files[0];
-                if (file) {
-                    var input = document.getElementById("auditorFileInput");
-                    var dt = new DataTransfer();
-                    dt.items.add(file);
-                    input.files = dt.files;
-                    input.dispatchEvent(new Event("change"));
-                }
-            });
-
-            function showAuditorStaged(filename, wordCount, text) {
-                document.getElementById("auditorUploadZone").style.display = "none";
-                document.getElementById("auditorStaged").style.display = "block";
-                document.getElementById("auditorResults").style.display = "none";
-
-                var pages = Math.max(1, Math.ceil(wordCount / 500));
-                document.getElementById("auditorDocName").textContent = filename;
-                document.getElementById("auditorDocMeta").textContent = pages + " page" + (pages > 1 ? "s" : "") + " • " + wordCount.toLocaleString() + " words • Loaded locally";
-                document.getElementById("auditorDocPreview").textContent = text.substring(0, 250) + (text.length > 250 ? "..." : "");
-            }
-
-            window.resetAuditor = function() {
-                auditorDocText = "";
-                auditorDocName = "";
-                document.getElementById("auditorUploadZone").style.display = "block";
-                document.getElementById("auditorStaged").style.display = "none";
-                document.getElementById("auditorResults").style.display = "none";
-            };
-
-            window.rerunAudit = function() {
-                document.getElementById("auditorStaged").style.display = "block";
-                document.getElementById("auditorResults").style.display = "none";
-            };
-
-            // Analysis buttons
-            document.getElementById("btnFullAudit").addEventListener("click", function() { runAudit("full"); });
-            document.getElementById("btnRiskScan").addEventListener("click", function() { runAudit("risk"); });
-            document.getElementById("btnObligations").addEventListener("click", function() { runAudit("obligations"); });
-            document.getElementById("btnPiiScan").addEventListener("click", function() { runAudit("pii"); });
-
-            function runAudit(mode) {
-                if (auditorAnalysisRunning || !auditorDocText) return;
-                auditorAnalysisRunning = true;
-
-                // Disable buttons
-                ["btnFullAudit", "btnRiskScan", "btnObligations", "btnPiiScan"].forEach(function(id) {
-                    document.getElementById(id).disabled = true;
-                });
-
-                // Switch to results view
-                document.getElementById("auditorStaged").style.display = "none";
-                document.getElementById("auditorResults").style.display = "block";
-
-                var wordCount = auditorDocText.split(/\s+/).length;
-                var pages = Math.max(1, Math.ceil(wordCount / 500));
-                document.getElementById("auditorResultsDocSummary").textContent =
-                    "\uD83D\uDCC4 " + auditorDocName + " • " + pages + " page" + (pages > 1 ? "s" : "") + " • " + wordCount.toLocaleString() + " words";
-
-                // Clear previous results and show initial spinner
-                document.getElementById("processingLogContent").innerHTML =
-                    '<div class="log-step active"><span class="spinner"></span> Initializing Clean Room analysis...</div>';
-                document.getElementById("auditorResultsCards").innerHTML = "";
-                document.getElementById("auditStamp").style.display = "none";
-                document.getElementById("auditorResultsActions").style.display = "none";
-
-                // Start analysis with streaming
-                fetch("/auditor-analyze", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        text: auditorDocText,
-                        filename: auditorDocName,
-                        mode: mode,
-                        model: currentModel
-                    })
-                })
-                .then(function(r) { return r.body.getReader(); })
-                .then(function(reader) {
-                    var decoder = new TextDecoder();
-                    var buffer = "";
-                    var firstEvent = true;
-
-                    function processLine(line) {
-                        line = line.trim();
-                        if (!line) return;
-                        try {
-                            var evt = JSON.parse(line);
-                            // Clear initializing message on first real event
-                            if (firstEvent) {
-                                document.getElementById("processingLogContent").innerHTML = "";
-                                firstEvent = false;
-                            }
-                            processAuditorEvent(evt);
-                        } catch(e) { console.log("Parse error:", e); }
-                    }
-
-                    function read() {
-                        reader.read().then(function(result) {
-                            if (result.done) {
-                                if (buffer.trim()) processLine(buffer);
-                                // Done
-                                auditorAnalysisRunning = false;
-                                ["btnFullAudit", "btnRiskScan", "btnObligations", "btnPiiScan"].forEach(function(id) {
-                                    document.getElementById(id).disabled = false;
-                                });
-                                document.getElementById("auditorResultsActions").style.display = "flex";
-                                return;
-                            }
-                            buffer += decoder.decode(result.value);
-                            var lines = buffer.split("\n");
-                            buffer = lines.pop();
-                            lines.forEach(processLine);
-                            read();
-                        });
-                    }
-                    read();
-                })
-                .catch(function(err) {
-                    addLogStep("error", "Error: " + err.message, []);
-                    auditorAnalysisRunning = false;
-                    ["btnFullAudit", "btnRiskScan", "btnObligations", "btnPiiScan"].forEach(function(id) {
-                        document.getElementById(id).disabled = false;
-                    });
-                });
-            }
-
-            function processAuditorEvent(evt) {
-                if (evt.type === "log") {
-                    addLogStep(evt.status, evt.message, evt.details || []);
-                }
-                else if (evt.type === "prompt") {
-                    addLogPrompt(evt.label, evt.text);
-                }
-                else if (evt.type === "pii") {
-                    renderPiiCard(evt.findings);
-                }
-                else if (evt.type === "risk") {
-                    renderRiskCard(evt.findings);
-                }
-                else if (evt.type === "obligations") {
-                    renderObligationsCard(evt.findings);
-                }
-                else if (evt.type === "summary") {
-                    renderSummaryCard(evt.text);
-                }
-                else if (evt.type === "audit") {
-                    renderAuditStamp(evt);
-                }
-            }
-
-            function addLogStep(status, message, details) {
-                var log = document.getElementById("processingLogContent");
-                // Use animated CSS spinner for active steps, emojis for others
-                var icon = status === "complete" ? "\u2705" : status === "active" ? '<span class="spinner" style="width:14px;height:14px;margin-right:6px;border-width:2px;vertical-align:middle;"></span>' : status === "pending" ? "\u23F3" : "\u274C";
-                var cls = status === "complete" ? "complete" : status === "active" ? "active" : "pending";
-                var html = '<div class="log-step ' + cls + '">' +
-                    (status === "active" ? icon : '<span class="log-step-icon">' + icon + '</span>') + message + '</div>';
-                if (details && details.length > 0) {
-                    details.forEach(function(d) {
-                        html += '<div class="log-step-detail">\u2022 ' + d + '</div>';
-                    });
-                }
-                // When a step completes, replace the last active spinner
-                if (status === "complete") {
-                    var activeSteps = log.querySelectorAll(".log-step.active");
-                    if (activeSteps.length > 0) {
-                        var last = activeSteps[activeSteps.length - 1];
-                        // Remove the active step and any detail lines after it
-                        var sibling = last.nextElementSibling;
-                        while (sibling && sibling.classList.contains("log-step-detail")) {
-                            var next = sibling.nextElementSibling;
-                            sibling.remove();
-                            sibling = next;
-                        }
-                        last.remove();
-                    }
-                }
-                log.innerHTML += html;
-                log.scrollTop = log.scrollHeight;
-            }
-
-            function addLogPrompt(label, text) {
-                var log = document.getElementById("processingLogContent");
-                var html = '<div class="log-prompt-box">' +
-                    '<div class="log-prompt-label">' + label + '</div>' +
-                    '<div>' + text.replace(/\n/g, "<br>") + '</div>' +
-                    '</div>';
-                log.innerHTML += html;
-                log.scrollTop = log.scrollHeight;
-            }
-
-            function renderPiiCard(findings) {
-                if (!findings || findings.length === 0) return;
-                var cards = document.getElementById("auditorResultsCards");
-                var html = '<div class="result-card pii">' +
-                    '<div class="result-card-header">\uD83D\uDD10 PII DETECTED</div>';
-                findings.forEach(function(f) {
-                    var sevIcon = f.severity === "high" ? "\uD83D\uDD34" : "\uD83D\uDFE1";
-                    html += '<div class="pii-item">' +
-                        '<span class="pii-severity">' + sevIcon + '</span>' +
-                        '<span class="pii-type">' + f.type + '</span>' +
-                        '<span class="pii-value">' + f.value + '</span>' +
-                        '<span class="pii-location">' + f.location + '</span>' +
-                        '</div>';
-                });
-                html += '<div style="margin-top:12px;font-size:0.85em;opacity:0.7;">\u26A1 Recommendation: Redact before external sharing</div>';
-                html += '</div>';
-                cards.innerHTML += html;
-            }
-
-            function renderRiskCard(findings) {
-                if (!findings || findings.length === 0) return;
-                var cards = document.getElementById("auditorResultsCards");
-                var html = '<div class="result-card">' +
-                    '<div class="result-card-header">\u26A0\uFE0F RISK ASSESSMENT</div>';
-                findings.forEach(function(f) {
-                    var sevClass = (f.severity || "medium").toLowerCase();
-                    var sevIcon = sevClass === "high" ? "\uD83D\uDD34" : sevClass === "medium" ? "\uD83D\uDFE1" : "\uD83D\uDFE2";
-                    var sevLabel = sevClass.toUpperCase();
-                    html += '<div class="risk-item">' +
-                        '<div class="risk-severity ' + sevClass + '">' + sevIcon + ' ' + sevLabel + ' \u2014 ' + (f.type || "Risk") + (f.section ? " (Sec " + f.section + ")" : "") + '</div>' +
-                        '<div class="risk-finding">' + (f.finding || "") + '</div>' +
-                        (f.recommendation ? '<div class="risk-recommendation">\u2192 ' + f.recommendation + '</div>' : '') +
-                        '</div>';
-                });
-                html += '</div>';
-                cards.innerHTML += html;
-            }
-
-            function renderObligationsCard(findings) {
-                if (!findings || findings.length === 0) return;
-                var cards = document.getElementById("auditorResultsCards");
-                var html = '<div class="result-card">' +
-                    '<div class="result-card-header">\uD83D\uDCCB KEY OBLIGATIONS</div>' +
-                    '<table style="width:100%;font-size:0.9em;border-collapse:collapse;">' +
-                    '<tr style="opacity:0.6;"><th style="text-align:left;padding:8px 4px;">Obligation</th><th style="text-align:left;padding:8px 4px;">Deadline</th><th style="text-align:left;padding:8px 4px;">Consequence</th></tr>';
-                findings.forEach(function(f) {
-                    html += '<tr style="border-top:1px solid rgba(255,255,255,0.1);">' +
-                        '<td style="padding:8px 4px;">' + (f.obligation || "") + '</td>' +
-                        '<td style="padding:8px 4px;">' + (f.deadline || "") + '</td>' +
-                        '<td style="padding:8px 4px;">' + (f.consequence || "") + '</td>' +
-                        '</tr>';
-                });
-                html += '</table></div>';
-                cards.innerHTML += html;
-            }
-
-            function renderSummaryCard(text) {
-                if (!text) return;
-                var cards = document.getElementById("auditorResultsCards");
-                var html = '<div class="result-card">' +
-                    '<div class="result-card-header">\uD83D\uDCDD EXECUTIVE SUMMARY</div>' +
-                    '<div style="line-height:1.6;">' + text.replace(/\n/g, "<br>") + '</div>' +
-                    '</div>';
-                cards.innerHTML += html;
-            }
-
-            function renderAuditStamp(data) {
-                var stamp = document.getElementById("auditStamp");
-                stamp.style.display = "block";
-                var timeComparison = "";
-                if (data.estimated_time) {
-                    var diff = data.total_time - data.estimated_time;
-                    if (Math.abs(diff) <= 5) {
-                        timeComparison = " (estimated: ~" + data.estimated_time + "s ✓)";
-                    } else if (diff < 0) {
-                        timeComparison = " (estimated: ~" + data.estimated_time + "s — " + Math.abs(Math.round(diff)) + "s faster!)";
-                    } else {
-                        timeComparison = " (estimated: ~" + data.estimated_time + "s)";
-                    }
-                }
-                stamp.innerHTML = '<div class="audit-stamp-header">\uD83D\uDD12 AUDIT STAMP</div>' +
-                    '<div class="audit-stamp-line">Clean Room Audit Complete</div>' +
-                    '<div class="audit-stamp-line">Analyzed: ' + auditorDocName + '</div>' +
-                    '<div class="audit-stamp-line">Total time: ' + (data.total_time || "?") + 's' + timeComparison + '</div>' +
-                    '<div class="audit-stamp-line">PII scan: regex (local) \u2014 ' + (data.pii_time || "0") + 's</div>' +
-                    '<div class="audit-stamp-line">Risk analysis: Phi-4 Mini (NPU) \u2014 ' + (data.analysis_time || "?") + 's</div>' +
-                    '<div class="audit-stamp-line" style="color:#00CC6A;margin-top:8px;">Network calls: 0 \u2022 Data transmitted: 0 bytes</div>';
-            }
-
             console.log("All event handlers set up!");
         });
         
@@ -3929,7 +3639,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             if (emptyState) emptyState.style.display = "none";
             var div = document.createElement("div");
             div.className = "message " + (role === "user" ? "user-msg" : "assistant-msg");
-            var label = role === "user" ? "You" : "Agent (Phi-4 Mini)";
+            var label = role === "user" ? "You" : "Agent ({{MODEL_LABEL}})";
             div.innerHTML = '<div class="role">' + label + '</div><div class="content">' + content + '</div>';
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
@@ -4515,13 +4225,95 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             }
         }
         
-        // === Two-Brain Router Functions ===
+        // === Unified Auditor Functions (analysis + escalation) ===
         var routerDocText = "";
         var routerDocName = "";
         var routerRunning = false;
         var routerEscalationContext = {};  // saved for decline/approve decision
+        var pendingAuditStamp = null;     // saved for deferred audit stamp display
 
-        // File upload button
+        // --- Render functions (structured results cards) ---
+
+        function renderPiiCard(findings) {
+            if (!findings || findings.length === 0) return;
+            var cards = document.getElementById("auditorResultsCards");
+            var html = '<div class="result-card pii">' +
+                '<div class="result-card-header">\uD83D\uDD10 PII DETECTED</div>';
+            findings.forEach(function(f) {
+                var sevIcon = f.severity === "high" ? "\uD83D\uDD34" : "\uD83D\uDFE1";
+                html += '<div class="pii-item">' +
+                    '<span class="pii-severity">' + sevIcon + '</span>' +
+                    '<span class="pii-type">' + f.type + '</span>' +
+                    '<span class="pii-value">' + f.value + '</span>' +
+                    '<span class="pii-location">' + (f.location || "") + '</span>' +
+                    '</div>';
+            });
+            html += '<div style="margin-top:12px;font-size:0.85em;opacity:0.7;">\u26A1 Recommendation: Redact before external sharing</div>';
+            html += '</div>';
+            cards.innerHTML += html;
+        }
+
+        function renderRiskCard(findings) {
+            if (!findings || findings.length === 0) return;
+            var cards = document.getElementById("auditorResultsCards");
+            var html = '<div class="result-card">' +
+                '<div class="result-card-header">\u26A0\uFE0F RISK ASSESSMENT</div>';
+            findings.forEach(function(f) {
+                var sevClass = (f.severity || "medium").toLowerCase();
+                var sevIcon = sevClass === "high" ? "\uD83D\uDD34" : sevClass === "medium" ? "\uD83D\uDFE1" : "\uD83D\uDFE2";
+                var sevLabel = sevClass.toUpperCase();
+                html += '<div class="risk-item">' +
+                    '<div class="risk-severity ' + sevClass + '">' + sevIcon + ' ' + sevLabel + ' \u2014 ' + (f.type || "Risk") + (f.section ? " (Sec " + f.section + ")" : "") + '</div>' +
+                    '<div class="risk-finding">' + (f.finding || "") + '</div>' +
+                    (f.recommendation ? '<div class="risk-recommendation">\u2192 ' + f.recommendation + '</div>' : '') +
+                    '</div>';
+            });
+            html += '</div>';
+            cards.innerHTML += html;
+        }
+
+        function renderObligationsCard(findings) {
+            if (!findings || findings.length === 0) return;
+            var cards = document.getElementById("auditorResultsCards");
+            var html = '<div class="result-card">' +
+                '<div class="result-card-header">\uD83D\uDCCB KEY OBLIGATIONS</div>' +
+                '<table style="width:100%;font-size:0.9em;border-collapse:collapse;">' +
+                '<tr style="opacity:0.6;"><th style="text-align:left;padding:8px 4px;">Obligation</th><th style="text-align:left;padding:8px 4px;">Deadline</th><th style="text-align:left;padding:8px 4px;">Consequence</th></tr>';
+            findings.forEach(function(f) {
+                html += '<tr style="border-top:1px solid rgba(255,255,255,0.1);">' +
+                    '<td style="padding:8px 4px;">' + (f.obligation || "") + '</td>' +
+                    '<td style="padding:8px 4px;">' + (f.deadline || "") + '</td>' +
+                    '<td style="padding:8px 4px;">' + (f.consequence || "") + '</td>' +
+                    '</tr>';
+            });
+            html += '</table></div>';
+            cards.innerHTML += html;
+        }
+
+        function renderSummaryCard(text) {
+            if (!text) return;
+            var cards = document.getElementById("auditorResultsCards");
+            var html = '<div class="result-card">' +
+                '<div class="result-card-header">\uD83D\uDCDD EXECUTIVE SUMMARY</div>' +
+                '<div style="line-height:1.6;">' + text.replace(/\n/g, "<br>") + '</div>' +
+                '</div>';
+            cards.innerHTML += html;
+        }
+
+        function renderAuditStamp(data) {
+            var stamp = document.getElementById("auditStamp");
+            stamp.style.display = "block";
+            stamp.innerHTML = '<div class="audit-stamp-header">\uD83D\uDD12 AUDIT STAMP</div>' +
+                '<div class="audit-stamp-line">Audit Complete</div>' +
+                '<div class="audit-stamp-line">Analyzed: ' + routerDocName + '</div>' +
+                '<div class="audit-stamp-line">Total time: ' + (data.total_time || "?") + 's</div>' +
+                '<div class="audit-stamp-line">PII scan: regex (local) \u2014 ' + (data.pii_time || "0") + 's</div>' +
+                '<div class="audit-stamp-line">Risk analysis: {{MODEL_LABEL}} (NPU) \u2014 ' + (data.analysis_time || "?") + 's</div>' +
+                '<div class="audit-stamp-line" style="color:#00CC6A;margin-top:8px;">Network calls: 0 \u2022 Data transmitted: 0 bytes</div>';
+        }
+
+        // --- File upload / demo buttons ---
+
         document.getElementById("routerUploadBtn").addEventListener("click", function() {
             document.getElementById("routerFileInput").click();
         });
@@ -4558,12 +4350,24 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             }
         });
 
-        // Demo button — load demo NDA via existing endpoint
+        // Demo button — load demo NDA
         document.getElementById("routerDemoBtn").addEventListener("click", function() {
             fetch("/auditor-demo-doc")
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.error) { alert("Demo document not found: " + data.error); return; }
+                routerDocText = data.text;
+                routerDocName = data.filename;
+                runRouterAnalysis();
+            });
+        });
+
+        // Escalation demo button — load cross-border IP license
+        document.getElementById("routerEscalationDemoBtn").addEventListener("click", function() {
+            fetch("/auditor-escalation-demo-doc")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Escalation demo document not found: " + data.error); return; }
                 routerDocText = data.text;
                 routerDocName = data.filename;
                 runRouterAnalysis();
@@ -4582,11 +4386,14 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             if (e.key === "Enter") document.getElementById("routerAskBtn").click();
         });
 
+        // --- Main analysis function ---
+
         function runRouterAnalysis(queryOnly) {
             if (routerRunning) return;
             routerRunning = true;
+            pendingAuditStamp = null;
 
-            // Switch to decision view
+            // Switch to results view
             document.getElementById("routerInputZone").style.display = "none";
             document.getElementById("routerDecision").style.display = "block";
             document.getElementById("routerDecisionCard").style.display = "none";
@@ -4594,8 +4401,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             document.getElementById("stayedLocalBanner").style.display = "none";
             document.getElementById("routerTrustReceipt").style.display = "none";
             document.getElementById("routerPostActions").style.display = "none";
+            document.getElementById("auditorResultsCards").innerHTML = "";
+            document.getElementById("auditStamp").style.display = "none";
             document.getElementById("routerStatusLog").innerHTML =
-                '<div class="log-step active"><span class="spinner"></span> Starting Two-Brain Router...</div>';
+                '<div class="log-step active"><span class="spinner"></span> Starting analysis...</div>';
 
             var body = {};
             if (routerDocText) {
@@ -4625,7 +4434,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     try {
                         var evt = JSON.parse(line);
                         processRouterEvent(evt);
-                    } catch(e) { console.log("Router parse error:", e); }
+                    } catch(e) { console.log("Auditor parse error:", e); }
                 }
 
                 function read() {
@@ -4651,19 +4460,57 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             });
         }
 
+        function resolveRouterSpinners() {
+            var log = document.getElementById("routerStatusLog");
+            var activeSteps = log.querySelectorAll(".log-step.active");
+            activeSteps.forEach(function(step) {
+                step.classList.remove("active");
+                step.classList.add("complete");
+                var spinner = step.querySelector(".spinner");
+                if (spinner) spinner.outerHTML = '<span style="color:#00CC6A;">&#10003;</span>';
+            });
+        }
+
+        // --- Unified event handler ---
+
         function processRouterEvent(evt) {
             var log = document.getElementById("routerStatusLog");
 
-            if (evt.type === "status") {
+            if (evt.type === "document_preview") {
+                var html = '<div class="doc-preview-card">';
+                html += '<div style="font-weight:600;color:#fff;">&#128196; ' + (evt.filename || 'document') + '</div>';
+                html += '<div style="opacity:0.6;font-size:0.85em;">' + (evt.word_count || 0) + ' words</div>';
+                if (evt.preview) {
+                    var safePreview = evt.preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    html += '<div class="doc-preview-text">' + safePreview + '...</div>';
+                }
+                html += '</div>';
+                log.innerHTML += html;
+            }
+            else if (evt.type === "status") {
+                resolveRouterSpinners();
                 log.innerHTML += '<div class="log-step active"><span class="spinner"></span> ' + evt.message + '</div>';
             }
             else if (evt.type === "knowledge") {
-                var count = evt.sources ? evt.sources.length : 0;
-                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Local Knowledge: ' +
-                    count + ' source(s) found (' + evt.total_indexed + ' indexed)</div>';
+                resolveRouterSpinners();
+            }
+            else if (evt.type === "pii") {
+                renderPiiCard(evt.findings);
+            }
+            else if (evt.type === "risk") {
+                renderRiskCard(evt.findings);
+            }
+            else if (evt.type === "obligations") {
+                renderObligationsCard(evt.findings);
+            }
+            else if (evt.type === "summary") {
+                renderSummaryCard(evt.text);
             }
             else if (evt.type === "decision_card") {
-                document.getElementById("routerDecisionCard").style.display = "block";
+                resolveRouterSpinners();
+
+                var card = document.getElementById("routerDecisionCard");
+                var analysisEl = document.getElementById("routerAnalysisText");
 
                 // Confidence indicator
                 var confEl = document.getElementById("dcConfidence");
@@ -4683,8 +4530,30 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 // Frontier benefit
                 document.getElementById("dcFrontierBenefit").textContent = evt.frontier_benefit || "None";
 
-                // Analysis text
-                document.getElementById("routerAnalysisText").innerHTML = mdToHtml(evt.analysis || "");
+                // Show card
+                card.style.display = "block";
+
+                // Analysis text (only for query mode — document mode uses structured cards)
+                var analysisContent = (evt.analysis || "").trim();
+                if (!analysisContent && evt.reasoning) {
+                    analysisContent = evt.reasoning;
+                }
+                if (analysisContent && !routerDocText) {
+                    // Query mode: show analysis text
+                    try {
+                        var safe = analysisContent
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;');
+                        analysisEl.innerHTML = mdToHtml(safe);
+                        analysisEl.style.display = "block";
+                    } catch(mdErr) {
+                        analysisEl.textContent = analysisContent;
+                        analysisEl.style.display = "block";
+                    }
+                } else {
+                    analysisEl.style.display = "none";
+                }
 
                 // Update status log
                 log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Analysis complete (' + evt.analysis_time + 's)</div>';
@@ -4693,8 +4562,9 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 routerEscalationContext.confidence = evt.confidence;
                 routerEscalationContext.sources_used = evt.sources_used || [];
 
-                // If HIGH confidence, show post-actions immediately
+                // If HIGH confidence, show audit stamp and post-actions immediately
                 if (evt.confidence === "HIGH") {
+                    if (pendingAuditStamp) renderAuditStamp(pendingAuditStamp);
                     document.getElementById("routerPostActions").style.display = "block";
                 }
             }
@@ -4703,7 +4573,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
                 // Populate diff
                 document.getElementById("diffOriginal").textContent = evt.original_preview || "";
-                // Highlight redacted spans in the sanitized preview
                 var redactedHtml = (evt.redacted_preview || "").replace(
                     /\[REDACTED (.*?)\]/g,
                     '<span class="pii-redacted">[REDACTED $1]</span>'
@@ -4721,14 +4590,25 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 routerEscalationContext.estimated_tokens = evt.estimated_tokens;
                 routerEscalationContext.estimated_cost = evt.estimated_cost;
             }
+            else if (evt.type === "audit") {
+                // Save audit stamp data; render immediately if HIGH or no escalation
+                pendingAuditStamp = evt;
+                if (routerEscalationContext.confidence === "HIGH") {
+                    renderAuditStamp(evt);
+                }
+            }
             else if (evt.type === "error") {
+                resolveRouterSpinners();
                 log.innerHTML += '<div class="log-step" style="color:#FF4444;">&#10060; ' + evt.message + '</div>';
                 document.getElementById("routerPostActions").style.display = "block";
             }
             else if (evt.type === "complete") {
-                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Router complete (' + evt.total_time + 's)</div>';
+                resolveRouterSpinners();
+                log.innerHTML += '<div class="log-step" style="color:#00CC6A;">&#10003; Auditor complete (' + evt.total_time + 's)</div>';
             }
         }
+
+        // --- Escalation handlers ---
 
         // Decline escalation — the heroic path
         document.getElementById("btnDeclineEsc").addEventListener("click", function() {
@@ -4736,7 +4616,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             // Show Stayed Local banner
             document.getElementById("stayedLocalBanner").style.display = "block";
-            // Re-trigger animation by resetting the icon
             var icon = document.getElementById("stayedLocalLockIcon");
             icon.style.animation = "none";
             icon.offsetHeight;  // force reflow
@@ -4765,6 +4644,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 updateSavingsWidget();
             });
 
+            // Show audit stamp after escalation decision
+            if (pendingAuditStamp) renderAuditStamp(pendingAuditStamp);
             document.getElementById("routerPostActions").style.display = "block";
         });
 
@@ -4777,6 +4658,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             // Simulated delay
             setTimeout(function() {
+                resolveRouterSpinners();
                 log.innerHTML += '<div class="log-step" style="color:#FFB900;">&#9729;&#65039; Frontier response received (simulated)</div>';
 
                 fetch("/router/decide", {
@@ -4790,6 +4672,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     updateSavingsWidget();
                 });
 
+                // Show audit stamp after escalation decision
+                if (pendingAuditStamp) renderAuditStamp(pendingAuditStamp);
                 document.getElementById("routerPostActions").style.display = "block";
             }, 2000);
         });
@@ -4815,11 +4699,14 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             document.getElementById("trustReceiptBody").innerHTML = html;
         }
 
-        window.resetRouter = function() {
+        // --- Reset function ---
+
+        window.resetAuditor = function() {
             routerDocText = "";
             routerDocName = "";
             routerRunning = false;
             routerEscalationContext = {};
+            pendingAuditStamp = null;
             document.getElementById("routerInputZone").style.display = "block";
             document.getElementById("routerDecision").style.display = "none";
             document.getElementById("routerDecisionCard").style.display = "none";
@@ -4827,6 +4714,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             document.getElementById("stayedLocalBanner").style.display = "none";
             document.getElementById("routerTrustReceipt").style.display = "none";
             document.getElementById("routerPostActions").style.display = "none";
+            document.getElementById("auditorResultsCards").innerHTML = "";
+            document.getElementById("auditStamp").style.display = "none";
             document.getElementById("routerStatusLog").innerHTML = "";
             document.getElementById("routerQueryInput").value = "";
         };
@@ -4905,7 +4794,11 @@ def serve_tesseract(filename):
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    page = HTML_TEMPLATE.replace("{{CHIP_LABEL}}", CHIP_LABEL) \
+                         .replace("{{DEVICE_LABEL}}", DEVICE_LABEL) \
+                         .replace("{{MODEL_LABEL}}", MODEL_LABEL) \
+                         .replace("{{MODEL_ALIAS}}", MODEL_ALIAS)
+    return render_template_string(page)
 
 @app.route('/upload-to-demo', methods=['POST'])
 def upload_to_demo():
@@ -4994,7 +4887,7 @@ def demo_meeting_agenda():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a helpful executive assistant. Be concise and professional."},
@@ -5064,7 +4957,7 @@ def demo_analyze_strategy():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a helpful executive assistant. Be concise."},
@@ -5117,7 +5010,7 @@ def demo_list_documents():
             yield json.dumps({"type": "status", "text": "Summarizing..."}) + "\n"
 
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant. Be brief."},
@@ -5316,7 +5209,7 @@ def demo_device_health():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": (
@@ -5356,6 +5249,48 @@ def demo_device_health():
                 "time": total,
                 "findings": findings,
             }) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/knowledge', methods=['POST'])
+def knowledge_answer():
+    """Answer a knowledge question with no tool access — pure AI explanation.
+
+    Used by Device Health 'Learn More' buttons and any context where
+    the question should be answered from the model's training data,
+    not by running commands.
+    """
+    data = request.json
+    question = (data.get('question') or data.get('message', '')).strip()
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+
+    def generate():
+        start = _time.time()
+        yield json.dumps({"type": "status", "text": "Thinking..."}) + "\n"
+        try:
+            _call_start = _time.time()
+            response = foundry_chat(
+                model=DEFAULT_MODEL,
+                messages=[
+                    {"role": "system", "content":
+                        "You are an IT security and systems administration expert. "
+                        "Answer the user's question clearly and concisely from your knowledge. "
+                        "Do NOT suggest running commands, scripts, or tools. "
+                        "Focus on explaining concepts, risks, and recommendations."
+                    },
+                    {"role": "user", "content": question},
+                ],
+                max_tokens=800,
+                temperature=0.3,
+            )
+            _track_model_call(response, _time.time() - _call_start)
+            answer = (response.choices[0].message.content or "").strip()
+            total = round(_time.time() - start, 1)
+            yield json.dumps({"type": "result", "text": answer, "time": total}) + "\n"
         except Exception as e:
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
@@ -5472,7 +5407,7 @@ def demo_review_summarize():
 
             try:
                 _call_start = _time.time()
-                response = client.chat.completions.create(
+                response = foundry_chat(
                     model=model,
                     messages=[
                         {"role": "system", "content": "You are an executive assistant preparing a board briefing. Be concise and focus on risks."},
@@ -5541,7 +5476,7 @@ def detect_pii():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a security analyst. Be thorough but concise."},
@@ -5582,15 +5517,16 @@ def summarize_doc():
             yield json.dumps({"type": "error", "message": f"Could not read file: {e}"}) + "\n"
             return
 
-        # Truncate to fit Phi-4 Mini context
-        if len(content) > 2500:
-            content = content[:2500] + "\n...(truncated)"
+        # Truncate to fit model context window
+        _doc_limit = 8000 if SILICON == "qualcomm" else 2500
+        if len(content) > _doc_limit:
+            content = content[:_doc_limit] + "\n...(truncated)"
 
         yield json.dumps({"type": "status", "text": f"Analyzing {len(content.split())} words with AI..."}) + "\n"
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant. Be concise and executive-ready. Use ONLY the information provided — do not invent names or facts."},
@@ -5629,7 +5565,7 @@ def chat():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": AGENT_SYSTEM_PROMPT},
@@ -5687,7 +5623,7 @@ def chat():
                 ]
                 try:
                     _call_start2 = _time.time()
-                    followup = client.chat.completions.create(
+                    followup = foundry_chat(
                         model=model,
                         messages=followup_msgs,
                         max_tokens=512,
@@ -5815,256 +5751,113 @@ def auditor_demo_doc():
     })
 
 
-@app.route('/auditor-analyze', methods=['POST'])
-def auditor_analyze():
-    """Analyze a document with verbose logging for demo purposes."""
-    data = request.json
-    text = data.get('text', '')
-    filename = data.get('filename', 'document.txt')
-    mode = data.get('mode', 'full')  # full, risk, obligations, pii
-    model = DEFAULT_MODEL
+ESCALATION_DEMO_DOC = """CROSS-BORDER INTELLECTUAL PROPERTY LICENSE AND DATA PROCESSING AGREEMENT
 
-    def generate():
-        import re
-        start_time = _time.time()
-        pii_time = 0
-        analysis_time = 0
+Effective Date: February 1, 2026
+Agreement No: XBIP-2026-0847
 
-        word_count = len(text.split())
-        section_matches = re.findall(r'SECTION\s+\d+', text, re.IGNORECASE)
+BETWEEN:
 
-        # Estimate completion time based on word count
-        # Formula: ~15s base + ~70s per 1000 words for AI analysis
-        # PII scan is instant (regex), bulk of time is NPU inference
-        # Calibrated from testing: 413 words took ~41s total (33s NPU inference)
-        estimated_seconds = 15 + int((word_count / 1000) * 70)
-        if mode == 'pii':
-            estimated_seconds = 2  # PII-only is instant
-        elif mode in ('risk', 'obligations'):
-            estimated_seconds = int(estimated_seconds * 0.7)  # Single-pass is faster
+NovaTech Solutions GmbH ("Licensor")
+Friedrichstrasse 123, 10117 Berlin, Germany
+VAT: DE 814725903
+Represented by: Dr. Elena Richter, Chief Technology Officer
+Contact: elena.richter@novatech-solutions.de | +49 30 5557 2200
 
-        # Step 1: Document ingestion
-        yield json.dumps({
-            "type": "log",
-            "status": "complete",
-            "message": "Document ingested",
-            "details": [
-                f"{word_count:,} words across ~{max(1, word_count // 500)} pages",
-                f"Detected sections: {len(section_matches)} ({', '.join(section_matches[:5])}{'...' if len(section_matches) > 5 else ''})",
-                f"⏱️ Estimated analysis time: ~{estimated_seconds}s"
-            ]
-        }) + "\n"
+AND:
 
-        # Step 2: PII Scan (if mode is full or pii)
-        if mode in ('full', 'pii'):
-            pii_start = _time.time()
-            yield json.dumps({
-                "type": "log",
-                "status": "active",
-                "message": "PII Scan (regex patterns)",
-                "details": [
-                    "Scanning for: SSN (XXX-XX-XXXX), Credit Cards, Email addresses, Phone numbers"
-                ]
-            }) + "\n"
+Pacific Rim Analytics, Inc. ("Licensee")
+1400 Market Street, Suite 900, San Francisco, CA 94103, USA
+EIN: 82-4193756
+Represented by: Michael Tanaka, VP Engineering
+Contact: m.tanaka@pacrimanalytics.com | +1 (415) 555-0193
+SSN (for tax withholding form W-8BEN): 591-38-4720
 
-            pii_findings = []
-            # SSN
-            for match in re.finditer(r'\b(\d{3})-(\d{2})-(\d{4})\b', text):
-                pii_findings.append({
-                    "severity": "high",
-                    "type": "SSN",
-                    "value": f"XXX-XX-{match.group(3)}",
-                    "location": _estimate_pii_location(text, match.start())
-                })
-            # Email
-            for match in re.finditer(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text):
-                pii_findings.append({
-                    "severity": "medium",
-                    "type": "Email",
-                    "value": match.group(0),
-                    "location": _estimate_pii_location(text, match.start())
-                })
-            # Phone
-            for match in re.finditer(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', text):
-                pii_findings.append({
-                    "severity": "medium",
-                    "type": "Phone",
-                    "value": match.group(0),
-                    "location": _estimate_pii_location(text, match.start())
-                })
+RECITALS
 
-            pii_time = round(_time.time() - pii_start, 2)
-            yield json.dumps({
-                "type": "log",
-                "status": "complete",
-                "message": f"PII Scan complete — {len(pii_findings)} instance(s) found",
-                "details": []
-            }) + "\n"
+WHEREAS Licensor owns proprietary machine learning models, training datasets, and related
+intellectual property developed under EU-funded Horizon Europe grant HE-2024-AI-0293; and
 
-            if pii_findings:
-                yield json.dumps({"type": "pii", "findings": pii_findings}) + "\n"
+WHEREAS Licensee desires to integrate said IP into commercial products distributed in the
+United States, Japan, South Korea, and the European Economic Area;
 
-        # Step 3: Risk Analysis (if mode is full or risk)
-        if mode in ('full', 'risk', 'obligations'):
-            analysis_start = _time.time()
-            elapsed_so_far = int(analysis_start - start_time)
-            remaining_estimate = max(10, estimated_seconds - elapsed_so_far)
+NOW, THEREFORE, the parties agree:
 
-            # Show the prompt being used
-            yield json.dumps({
-                "type": "log",
-                "status": "active",
-                "message": "Risk Analysis (Phi-4 Mini on NPU)",
-                "details": [f"⏱️ ~{remaining_estimate}s remaining — this is the main NPU inference pass"]
-            }) + "\n"
+1. GRANT OF LICENSE
 
-            analysis_prompt = """Analyze this contract and identify:
-1. HIGH RISK clauses (one-sided, unlimited liability, unusual terms)
-2. MEDIUM RISK clauses (broad scope, aggressive terms)
-3. LOW RISK clauses (standard boilerplate)
-4. Key OBLIGATIONS with deadlines
+1.1 Licensor grants Licensee a non-exclusive, non-transferable license to use the Licensed IP
+(defined in Schedule A) solely for the Permitted Purposes (defined in Schedule B).
 
-For each risk, provide:
-- SEVERITY: HIGH/MEDIUM/LOW
-- SECTION: section number
-- TYPE: category (indemnification, IP, non-compete, etc.)
-- FINDING: one sentence description
-- RECOMMENDATION: one sentence action"""
+1.2 Sub-licensing requires prior written consent and is subject to GDPR Article 28 processor
+requirements where personal data is involved.
 
-            yield json.dumps({
-                "type": "prompt",
-                "label": "PROMPT TO PHI-4 MINI:",
-                "text": analysis_prompt
-            }) + "\n"
+2. DATA PROCESSING AND TRANSFER
 
-            yield json.dumps({
-                "type": "log",
-                "status": "active",
-                "message": "Analyzing clauses for legal risks...",
-                "details": [
-                    "Focus: indemnification, IP assignment, liability caps",
-                    "Focus: non-compete scope, termination penalties"
-                ]
-            }) + "\n"
+2.1 Cross-Border Transfer Mechanism: Personal data transferred from the EEA to the United
+States shall be governed by the EU-US Data Privacy Framework, supplemented by Standard
+Contractual Clauses (Module 2: Controller to Processor) as annexed hereto.
 
-            # Make the AI call
-            try:
-                full_prompt = f"{analysis_prompt}\n\nCONTRACT TEXT:\n{text[:3000]}"
+2.2 Licensee shall implement appropriate safeguards per GDPR Article 46 and maintain
+certification under the California Consumer Privacy Act (CCPA) as amended by the CPRA.
 
-                _call_start = _time.time()
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "You are a contract analyst. Be concise and specific. Focus on non-standard or risky clauses."},
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    max_tokens=800,
-                    temperature=0.3
-                )
-                _track_model_call(response, _time.time() - _call_start)
-                ai_response = (response.choices[0].message.content or "").strip()
+2.3 Data Localization: Model training data containing EEA personal data shall not be stored
+outside the European Economic Area without explicit Data Protection Impact Assessment (DPIA)
+approved by Licensor's Data Protection Officer, Dr. Karl Weissman (karl.w@novatech-solutions.de).
 
-                analysis_time = round(_time.time() - analysis_start, 1)
+3. INTELLECTUAL PROPERTY INDEMNIFICATION
 
-                # Debug: Print raw AI response to console
-                print("\n" + "="*50)
-                print("[AUDITOR DEBUG] Raw AI Response:")
-                print("="*50)
-                print(ai_response[:1500] + ("..." if len(ai_response) > 1500 else ""))
-                print("="*50 + "\n")
+3.1 Licensor warrants that the Licensed IP does not, to Licensor's knowledge, infringe any
+third-party intellectual property rights in the jurisdictions listed in Section 1.2.
 
-                yield json.dumps({
-                    "type": "log",
-                    "status": "complete",
-                    "message": f"Analysis complete ({analysis_time}s on NPU)",
-                    "details": []
-                }) + "\n"
+3.2 Indemnification Cap: Licensor's total liability under this Section shall not exceed the
+greater of (a) EUR 2,000,000 or (b) 200% of license fees paid in the preceding 12 months.
 
-                # Parse the response into structured findings
-                risk_findings, obligation_findings, used_fallback = _parse_analysis_response(ai_response)
+3.3 Licensee acknowledges that the Licensed IP incorporates open-source components listed in
+Schedule C, governed by Apache 2.0, MIT, and LGPL-3.0 licenses respectively.
 
-                # Debug: Log parsing result
-                if used_fallback:
-                    print("[AUDITOR DEBUG] AI parsing FAILED - using FALLBACK findings")
-                    yield json.dumps({
-                        "type": "log",
-                        "status": "complete",
-                        "message": "⚠️ Using fallback analysis (AI output not structured)",
-                        "details": ["AI response didn't match expected format", "Demo fallback findings applied"]
-                    }) + "\n"
-                else:
-                    print(f"[AUDITOR DEBUG] AI parsing SUCCEEDED - {len(risk_findings)} risks, {len(obligation_findings)} obligations")
-                    yield json.dumps({
-                        "type": "log",
-                        "status": "complete",
-                        "message": f"✅ Parsed {len(risk_findings)} risks, {len(obligation_findings)} obligations from AI",
-                        "details": []
-                    }) + "\n"
+4. PAYMENT AND TAX WITHHOLDING
 
-                if risk_findings and mode in ('full', 'risk'):
-                    yield json.dumps({"type": "risk", "findings": risk_findings}) + "\n"
+4.1 License Fee: USD 450,000 per annum, payable quarterly.
+4.2 Withholding Tax: Payments are subject to applicable US-Germany tax treaty provisions.
+Licensor's German bank account for wire transfers:
+  Bank: Deutsche Bank AG
+  IBAN: DE89 3704 0044 0532 0130 00
+  BIC/SWIFT: COBADEFFXXX
+  Account Holder: NovaTech Solutions GmbH
 
-                if obligation_findings and mode in ('full', 'obligations'):
-                    yield json.dumps({"type": "obligations", "findings": obligation_findings}) + "\n"
+5. GOVERNING LAW AND DISPUTE RESOLUTION
 
-                # Generate summary
-                if mode == 'full':
-                    summary_start = _time.time()
-                    elapsed_so_far = int(summary_start - start_time)
-                    remaining_estimate = max(5, estimated_seconds - elapsed_so_far)
-                    yield json.dumps({
-                        "type": "log",
-                        "status": "active",
-                        "message": "Generating executive summary...",
-                        "details": [f"⏱️ ~{remaining_estimate}s remaining — final NPU pass"]
-                    }) + "\n"
+5.1 This Agreement shall be governed by the laws of Germany, without regard to conflict of
+laws principles, except that IP infringement claims shall be adjudicated under the laws of the
+jurisdiction where infringement is alleged.
 
-                    summary_prompt = f"Write a 2-3 sentence executive summary of this contract analysis. Key risks found: {len(risk_findings)}. Focus on the most critical issue for a CEO."
+5.2 Disputes shall be submitted to binding arbitration under ICC Rules, seated in London, UK.
 
-                    _call_start2 = _time.time()
-                    summary_response = client.chat.completions.create(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": "You are a contract analyst writing for a CEO. Be extremely concise."},
-                            {"role": "user", "content": f"{summary_prompt}\n\nAnalysis:\n{ai_response[:1000]}"}
-                        ],
-                        max_tokens=200,
-                        temperature=0.3
-                    )
-                    _track_model_call(summary_response, _time.time() - _call_start2)
-                    summary_text = (summary_response.choices[0].message.content or "").strip()
+SIGNATURES:
 
-                    yield json.dumps({
-                        "type": "log",
-                        "status": "complete",
-                        "message": "Executive summary complete",
-                        "details": []
-                    }) + "\n"
+NovaTech Solutions GmbH
+By: _________________________
+Dr. Elena Richter, CTO
+Date: February 1, 2026
 
-                    yield json.dumps({"type": "summary", "text": summary_text}) + "\n"
+Pacific Rim Analytics, Inc.
+By: _________________________
+Michael Tanaka, VP Engineering
+SSN: 591-38-4720
+Date: February 1, 2026
+"""
 
-            except Exception as e:
-                yield json.dumps({
-                    "type": "log",
-                    "status": "error",
-                    "message": f"Analysis error: {str(e)}",
-                    "details": []
-                }) + "\n"
 
-        # Final audit stamp
-        total_time = round(_time.time() - start_time, 1)
-        time_diff = total_time - estimated_seconds
-        time_accuracy = "on target" if abs(time_diff) <= 5 else ("faster" if time_diff < 0 else "slower")
-        yield json.dumps({
-            "type": "audit",
-            "total_time": total_time,
-            "estimated_time": estimated_seconds,
-            "time_accuracy": time_accuracy,
-            "pii_time": pii_time,
-            "analysis_time": analysis_time
-        }) + "\n"
+@app.route('/auditor-escalation-demo-doc', methods=['GET'])
+def auditor_escalation_demo_doc():
+    """Return the cross-border IP license document for escalation demo."""
+    text = ESCALATION_DEMO_DOC
+    return jsonify({
+        "filename": "cross_border_ip_license.txt",
+        "text": text,
+        "word_count": len(text.split())
+    })
 
-    return Response(generate(), mimetype='text/plain')
 
 
 def _estimate_pii_location(text, char_pos):
@@ -6248,7 +6041,7 @@ Return ONLY valid JSON, no other text."""
 
     try:
         _call_start = _time.time()
-        response = client.chat.completions.create(
+        response = foundry_chat(
             model=model,
             messages=[
                 {"role": "system", "content": "You are an ID verification assistant. Always respond with valid JSON only."},
@@ -6411,10 +6204,43 @@ def router_analyze():
 
     def generate():
         start = _time.time()
+        pii_time = 0
+        analysis_time = 0
+        pii_findings_raw = []  # from _scan_pii (with start/end for redaction)
 
-        # Step 1: Search Local Knowledge for relevant context
-        yield json.dumps({"type": "status", "message": "Searching Local Knowledge..."}) + "\n"
+        # Step 0: Show document being analyzed
+        if text:
+            yield json.dumps({
+                "type": "document_preview",
+                "filename": filename or "uploaded document",
+                "word_count": len(text.split()),
+                "preview": text[:300],
+            }) + "\n"
 
+        # Step 1: PII Scan (document mode only)
+        if text:
+            yield json.dumps({"type": "status", "message": "Scanning for PII..."}) + "\n"
+            _pii_start = _time.time()
+            pii_findings_raw = _scan_pii(text)
+            pii_time = round(_time.time() - _pii_start, 2)
+
+            if pii_findings_raw:
+                display_pii = []
+                for f in pii_findings_raw:
+                    val = f["value"]
+                    if f["type"] == "SSN":
+                        val = f"XXX-XX-{f['value'][-4:]}"
+                    display_pii.append({
+                        "severity": f["severity"],
+                        "type": f["type"],
+                        "value": val,
+                        "location": _estimate_pii_location(text, f["start"])
+                    })
+                yield json.dumps({"type": "pii", "findings": display_pii}) + "\n"
+
+            yield json.dumps({"type": "status", "message": f"PII scan complete — {len(pii_findings_raw)} item(s) found"}) + "\n"
+
+        # Step 2: Search Local Knowledge silently (feeds context to model but not shown in UI)
         search_query = query if query else text[:200]
         knowledge_results = search_knowledge(search_query)
 
@@ -6429,35 +6255,65 @@ def router_analyze():
         if len(knowledge_context) > 1000:
             knowledge_context = knowledge_context[:1000] + "\n[...truncated]"
 
+        # Emit knowledge event (silent in UI but available for trust receipts)
         yield json.dumps({
             "type": "knowledge",
             "sources": sources_used,
             "total_indexed": len(KNOWLEDGE_INDEX),
         }) + "\n"
 
-        # Step 2: Local analysis with knowledge context
-        yield json.dumps({"type": "status", "message": "Analyzing locally with Phi-4 Mini on NPU..."}) + "\n"
+        # Step 3: Analysis
+        yield json.dumps({"type": "status", "message": f"Analyzing with {MODEL_LABEL} on NPU..."}) + "\n"
 
-        # Confidence-first prompt: ask model to assess confidence before the full analysis
-        system_prompt = (
-            "You are an analyst running locally on an NPU. First assess your confidence, then answer.\n\n"
-            "Begin your response with exactly these three lines:\n"
-            "CONFIDENCE: HIGH or MEDIUM or LOW\n"
-            "REASONING: one sentence why\n"
-            "FRONTIER_BENEFIT: what a frontier model might add, or 'None — local answer is complete'\n\n"
-            "Then provide your analysis. If local knowledge sources were provided, cite them inline like: (Source: filename.txt)"
-        )
-
-        user_content = ""
         if text:
-            user_content += f"DOCUMENT ({filename}):\n{text[:2500]}\n\n"
-        if knowledge_context:
-            user_content += f"LOCAL KNOWLEDGE:\n{knowledge_context}\n\n"
-        user_content += f"QUESTION: {query}" if query else "Provide a comprehensive analysis of this document."
+            # Document mode: structured analysis with confidence assessment
+            system_prompt = (
+                "You are a contract analyst running locally on an NPU. "
+                "Be concise and specific. Focus on non-standard or risky clauses."
+            )
+            analysis_prompt = (
+                "Analyze this contract and identify:\n"
+                "1. HIGH RISK clauses (one-sided, unlimited liability, unusual terms)\n"
+                "2. MEDIUM RISK clauses (broad scope, aggressive terms)\n"
+                "3. LOW RISK clauses (standard boilerplate)\n"
+                "4. Key OBLIGATIONS with deadlines\n\n"
+                "For each risk, provide:\n"
+                "- SEVERITY: HIGH/MEDIUM/LOW\n"
+                "- SECTION: section number\n"
+                "- TYPE: category (indemnification, IP, non-compete, etc.)\n"
+                "- FINDING: one sentence description\n"
+                "- RECOMMENDATION: one sentence action\n\n"
+                "Then provide:\n"
+                "CONFIDENCE: HIGH or MEDIUM or LOW\n"
+                "REASONING: one sentence why\n"
+                "FRONTIER_BENEFIT: what a frontier model might add, or 'None — local answer is complete'\n\n"
+                "End with:\n"
+                "SUMMARY: 2-sentence executive summary"
+            )
+            # Note: knowledge_context intentionally omitted for document mode
+            # to stay within model's prompt limit.  The document text itself
+            # is the primary input; knowledge sources are still emitted in
+            # the knowledge event for trust receipts.
+            _contract_limit = 6000 if SILICON == "qualcomm" else 2000
+            user_content = f"{analysis_prompt}\n\nCONTRACT TEXT:\n{text[:_contract_limit]}"
+        else:
+            # Query mode: confidence-first prompt (original router behavior)
+            system_prompt = (
+                "You are an analyst running locally on an NPU. First assess your confidence, then answer.\n\n"
+                "Begin your response with exactly these three lines:\n"
+                "CONFIDENCE: HIGH or MEDIUM or LOW\n"
+                "REASONING: one sentence why\n"
+                "FRONTIER_BENEFIT: what a frontier model might add, or 'None — local answer is complete'\n\n"
+                "Then provide your analysis. If local knowledge sources were provided, cite them inline like: (Source: filename.txt)"
+            )
+            user_content = ""
+            if knowledge_context:
+                user_content += f"LOCAL KNOWLEDGE:\n{knowledge_context}\n\n"
+            user_content += f"QUESTION: {query}"
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -6474,10 +6330,11 @@ def router_analyze():
 
         analysis_time = round(_time.time() - start, 1)
 
-        # Step 3: Parse confidence from response (expected at top)
+        # Parse confidence and metadata from response
         confidence = "HIGH"
         reasoning = ""
         frontier_benefit = "None — local answer is complete"
+        summary_text = ""
 
         for line in ai_response.split('\n'):
             line_stripped = line.strip()
@@ -6494,14 +6351,37 @@ def router_analyze():
                 reasoning = line_stripped.split(':', 1)[1].strip()
             elif line_upper.startswith('FRONTIER_BENEFIT:'):
                 frontier_benefit = line_stripped.split(':', 1)[1].strip()
+            elif line_upper.startswith('SUMMARY:'):
+                summary_text = line_stripped.split(':', 1)[1].strip()
 
-        # Clean analysis text (remove confidence metadata lines)
+        # Force MEDIUM confidence for escalation demo doc so the
+        # "Demo: Escalation Path" button always showcases the escalation flow
+        if filename == "cross_border_ip_license.txt":
+            confidence = "MEDIUM"
+            reasoning = "Multi-jurisdictional IP licensing with cross-border data flow provisions requires specialist review"
+            frontier_benefit = "Expert analysis of GDPR/CCPA interplay and IP indemnification gaps"
+
+        # Document mode: parse structured findings and yield events
+        if text:
+            risk_findings, obligation_findings, used_fallback = _parse_analysis_response(ai_response)
+            if risk_findings:
+                yield json.dumps({"type": "risk", "findings": risk_findings}) + "\n"
+            if obligation_findings:
+                yield json.dumps({"type": "obligations", "findings": obligation_findings}) + "\n"
+            if summary_text:
+                yield json.dumps({"type": "summary", "text": summary_text}) + "\n"
+
+        # Clean analysis text (remove metadata lines)
+        metadata_prefixes = ['CONFIDENCE:', 'REASONING:', 'FRONTIER_BENEFIT:', 'SUMMARY:']
+        if text:
+            metadata_prefixes += ['SEVERITY:', 'SECTION:', 'TYPE:', 'FINDING:', 'RECOMMENDATION:', 'OBLIGATION:', 'DEADLINE:', 'CONSEQUENCE:']
         display_text = '\n'.join(
             line for line in ai_response.split('\n')
-            if not line.strip().upper().startswith(('CONFIDENCE:', 'REASONING:', 'FRONTIER_BENEFIT:'))
+            if not any(line.strip().upper().startswith(p) for p in metadata_prefixes)
+            and not any(line.strip().upper().startswith('- ' + p) for p in metadata_prefixes)
         ).strip()
 
-        # Step 4: Yield the Decision Card data
+        # Decision Card
         yield json.dumps({
             "type": "decision_card",
             "analysis": display_text,
@@ -6512,10 +6392,9 @@ def router_analyze():
             "analysis_time": analysis_time,
         }) + "\n"
 
-        # Step 5: If confidence is not HIGH, prepare escalation data
+        # Escalation if confidence is not HIGH
         if confidence in ("MEDIUM", "LOW"):
-            pii_findings = _scan_pii(text) if text else []
-            redacted_text = _redact_text(text, pii_findings) if text else ""
+            redacted_text = _redact_text(text, pii_findings_raw) if text else ""
 
             redacted_tokens = len(redacted_text.split()) * 1.3
             estimated_input_tokens = int(redacted_tokens + 200)
@@ -6524,12 +6403,21 @@ def router_analyze():
 
             yield json.dumps({
                 "type": "escalation_available",
-                "pii_found": len(pii_findings),
-                "pii_details": pii_findings,
+                "pii_found": len(pii_findings_raw),
+                "pii_details": pii_findings_raw,
                 "original_preview": text[:800] if text else "",
                 "redacted_preview": redacted_text[:800] if redacted_text else "",
                 "estimated_tokens": estimated_input_tokens + estimated_output_tokens,
                 "estimated_cost": round(estimated_cost, 4),
+            }) + "\n"
+
+        # Audit stamp (document mode)
+        if text:
+            yield json.dumps({
+                "type": "audit",
+                "total_time": round(_time.time() - start, 1),
+                "pii_time": pii_time,
+                "analysis_time": analysis_time,
             }) + "\n"
 
         total_time = round(_time.time() - start, 1)
@@ -6636,18 +6524,56 @@ def connectivity_check():
 
 @app.route('/network-toggle', methods=['POST'])
 def network_toggle():
-    """Directly toggle network adapters for Go Offline / Go Online."""
+    """Directly toggle network adapters for Go Offline / Go Online.
+
+    Requires the Flask process (or python) to be running with admin rights.
+    Uses Start-Process -Verb RunAs to elevate if needed.
+    """
     action = (request.json or {}).get('action', 'offline')
     if action == 'offline':
-        cmd = "Disable-NetAdapter -Name 'Wi-Fi','Cellular' -Confirm:$false -ErrorAction SilentlyContinue"
+        verb = "Disable"
     else:
-        cmd = "Enable-NetAdapter -Name 'Wi-Fi','Cellular' -Confirm:$false -ErrorAction SilentlyContinue"
+        verb = "Enable"
+
+    # Try direct first (works if Flask is running as admin)
+    cmd = f"{verb}-NetAdapter -Name 'Wi-Fi','Cellular' -Confirm:$false -ErrorAction SilentlyContinue"
     try:
         proc = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command", cmd],
             capture_output=True, text=True, timeout=10
         )
-        return jsonify({'success': True, 'action': action})
+        # Verify the adapter actually changed state
+        verify = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "(Get-NetAdapter -Name 'Wi-Fi' -ErrorAction SilentlyContinue).Status"],
+            capture_output=True, text=True, timeout=5
+        )
+        status = (verify.stdout or "").strip()
+        expected = "Disabled" if action == "offline" else "Up"
+        if status == expected:
+            return jsonify({'success': True, 'action': action, 'status': status})
+
+        # Direct call didn't work (likely needs elevation) — try with RunAs
+        elevated_cmd = (
+            f"Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden "
+            f"-ArgumentList '-NoProfile','-Command',\"{cmd}\""
+        )
+        proc2 = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", elevated_cmd],
+            capture_output=True, text=True, timeout=15
+        )
+        # Verify again
+        verify2 = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "(Get-NetAdapter -Name 'Wi-Fi' -ErrorAction SilentlyContinue).Status"],
+            capture_output=True, text=True, timeout=5
+        )
+        status2 = (verify2.stdout or "").strip()
+        if status2 == expected:
+            return jsonify({'success': True, 'action': action, 'status': status2})
+        else:
+            return jsonify({'success': False, 'error': f'Adapter still {status2}. Run the app as Administrator for network toggle to work.',
+                            'status': status2})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -6712,7 +6638,7 @@ def my_day_data():
 
 @app.route('/brief-me', methods=['POST'])
 def brief_me():
-    """Full morning briefing — parse all data, send to Phi-4 Mini."""
+    """Full morning briefing — parse all data, send to local model."""
     model = DEFAULT_MODEL
 
     def generate():
@@ -6731,15 +6657,32 @@ def brief_me():
         emails = parse_inbox(MY_DAY_INBOX)
         yield json.dumps({"type": "status", "message": f"Found {len(emails)} emails"}) + "\n"
 
+        # Guard: if no data at all, return a clear message instead of letting the model hallucinate
+        if not events and not tasks and not emails:
+            total = round(_time.time() - start, 1)
+            yield json.dumps({
+                "type": "briefing",
+                "text": "**No data found.** The My Day folder is empty — no calendar events, tasks, or emails were found.\n\n"
+                        f"**Expected location:** `{MY_DAY_DIR}`\n\n"
+                        "Place the following files to enable briefings:\n"
+                        "- `calendar.ics` — Calendar events\n"
+                        "- `tasks.csv` — Task list (columns: Task, Priority, Status, Due)\n"
+                        "- `Inbox/*.eml` — Email files\n\n"
+                        "Run `setup.ps1` to generate sample demo data automatically.",
+                "time": total,
+                "counts": {"events": 0, "tasks": 0, "emails": 0},
+            }) + "\n"
+            return
+
         # Step 2: Compress into prompt
         yield json.dumps({"type": "status", "message": "Analyzing and cross-referencing..."}) + "\n"
         data_text = compress_for_briefing(events, tasks, emails)
 
-        # Step 3: Send to Phi-4 Mini
+        # Step 3: Send to local model
         yield json.dumps({"type": "status", "message": "Generating briefing with AI..."}) + "\n"
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": BRIEFING_SYSTEM_PROMPT},
@@ -6793,7 +6736,7 @@ def triage_inbox():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are an executive assistant triaging an inbox. Be concise."},
@@ -6866,7 +6809,7 @@ def prep_next_meeting():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": "You are an executive assistant preparing meeting briefs. Be concise and actionable."},
@@ -6902,7 +6845,7 @@ def top_3_focus():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": (
@@ -6976,7 +6919,7 @@ def tomorrow_preview():
 
         try:
             _call_start = _time.time()
-            response = client.chat.completions.create(
+            response = foundry_chat(
                 model=model,
                 messages=[
                     {"role": "system", "content": (
@@ -7024,8 +6967,9 @@ if __name__ == '__main__':
         print("\n** DEMO MODE ENABLED - Offline check bypassed for Clean Room Auditor **\n")
 
     print("\n" + "="*50)
-    print("Local NPU AI Assistant (Intel Edition)")
-    print("  My Day + AI Agent + Clean Room Auditor + ID Verification")
+    print(f"Local NPU AI Assistant ({EDITION_TAG})")
+    print(f"  {DEVICE_LABEL} — {CHIP_LABEL}")
+    print("  My Day + AI Agent + Auditor + ID Verification")
     print("="*50)
     print(f"Model: {DEFAULT_MODEL}")
     if FOUNDRY_AVAILABLE:
@@ -7036,51 +6980,68 @@ if __name__ == '__main__':
         print("Demo Mode: ENABLED (offline check bypassed)")
     print("")
     print("Features:")
-    print("  - Two-Brain Router (Local vs. Frontier escalation)")
+    print("  - Auditor (structured analysis + smart escalation)")
     print("  - My Day (calendar, email, tasks briefing)")
     print("  - AI Agent (tool calling, file ops, system commands)")
-    print("  - Clean Room Auditor (confidential document analysis)")
     print("  - ID Verification (Camera + OCR + AI)")
     print("")
     print("All processing happens 100% locally on your device.")
     print("")
 
     # --- Warmup: verify model is loaded and responsive before serving ---
-    print("Warming up model (first call may take a minute)...", flush=True)
+    # On Qualcomm QNN NPU, the Foundry service is unstable during rapid
+    # warmup retries (service crashes and restarts in a loop).  We skip
+    # the warmup ping on Qualcomm and let the first real request trigger
+    # model load; the auto-reconnect wrapper handles any port changes.
+    WARMUP_RETRIES = 4
+    WARMUP_PAUSE   = 10  # seconds between retries
     _warmup_done = threading.Event()
     _warmup_ok = [False]
 
-    def _warmup_call():
-        try:
-            client.chat.completions.create(
-                model=DEFAULT_MODEL,
-                messages=[{"role": "user", "content": "hi"}],
-                max_tokens=4,
-                temperature=0.1,
-            )
-            _warmup_ok[0] = True
-        except Exception:
-            pass
+    if SILICON == "qualcomm":
+        print("Skipping warmup on Qualcomm (first request will load model)...", flush=True)
+        _warmup_ok[0] = True
         _warmup_done.set()
-
-    _warmup_thread = threading.Thread(target=_warmup_call, daemon=True)
-    _warmup_start = _time.time()
-    _warmup_thread.start()
-
-    _spinner = ["|", "/", "-", "\\"]
-    _si = 0
-    while not _warmup_done.wait(timeout=0.5):
-        _elapsed = _time.time() - _warmup_start
-        print(f"\r  {_spinner[_si % 4]}  Loading model... {_elapsed:.0f}s", end="", flush=True)
-        _si += 1
-
-    _warmup_secs = _time.time() - _warmup_start
-    if _warmup_ok[0]:
-        MODEL_READY = True
-        print(f"\r  Model ready in {_warmup_secs:.1f}s              ")
     else:
-        MODEL_READY = True  # allow serving anyway
-        print(f"\r  Warning: warmup did not complete ({_warmup_secs:.1f}s). Continuing anyway.")
+        print("Warming up model (first load may download ~3 GB)...", flush=True)
+
+        def _warmup_call():
+            for attempt in range(1, WARMUP_RETRIES + 1):
+                try:
+                    client.chat.completions.create(
+                        model=DEFAULT_MODEL,
+                        messages=[{"role": "user", "content": "hi"}],
+                        max_tokens=4,
+                        temperature=0.1,
+                    )
+                    _warmup_ok[0] = True
+                    break
+                except Exception:
+                    if attempt < WARMUP_RETRIES:
+                        _time.sleep(WARMUP_PAUSE)
+                        _reconnect_foundry()
+            _warmup_done.set()
+
+    if SILICON != "qualcomm":
+        _warmup_thread = threading.Thread(target=_warmup_call, daemon=True)
+        _warmup_start = _time.time()
+        _warmup_thread.start()
+
+        _spinner = ["|", "/", "-", "\\"]
+        _si = 0
+        while not _warmup_done.wait(timeout=0.5):
+            _elapsed = _time.time() - _warmup_start
+            print(f"\r  {_spinner[_si % 4]}  Loading model... {_elapsed:.0f}s", end="", flush=True)
+            _si += 1
+
+        _warmup_secs = _time.time() - _warmup_start
+        if _warmup_ok[0]:
+            print(f"\r  Model ready in {_warmup_secs:.1f}s              ")
+        else:
+            print(f"\r  Warning: warmup did not complete ({_warmup_secs:.1f}s). Continuing anyway.")
+            print("  (Model may still be downloading — the app will work once it's ready.)")
+
+    MODEL_READY = True
 
     # --- Build Local Knowledge index ---
     build_knowledge_index()
@@ -7092,7 +7053,7 @@ if __name__ == '__main__':
         while True:
             _time.sleep(KEEPALIVE_INTERVAL)
             try:
-                client.chat.completions.create(
+                foundry_chat(
                     model=DEFAULT_MODEL,
                     messages=[{"role": "user", "content": "hi"}],
                     max_tokens=1,
@@ -7101,8 +7062,11 @@ if __name__ == '__main__':
             except Exception:
                 pass  # non-critical, will retry next interval
 
-    _keepalive_thread = threading.Thread(target=_keepalive_loop, daemon=True)
-    _keepalive_thread.start()
+    if SILICON != "qualcomm":
+        # Skip keepalive on Qualcomm - QNN NPU Foundry service is unstable
+        # with periodic pings; auto-reconnect handles port changes on demand.
+        _keepalive_thread = threading.Thread(target=_keepalive_loop, daemon=True)
+        _keepalive_thread.start()
 
     print("")
     print("Open http://localhost:5000 in your browser")

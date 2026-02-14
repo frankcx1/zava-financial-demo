@@ -20,7 +20,7 @@ python npu_demo_flask.py
 - Foundry Local running on `localhost:5272` with the `phi-silica` model loaded
 - Python 3.10+ with Flask, OpenAI SDK installed
 - Tesseract.js files bundled in `tesseract/` directory (included)
-- Demo data files in `C:\Users\{user}\Documents\Demo\My_Day\` (calendar.ics, tasks.csv, Inbox/*.eml)
+- Demo data files in `demo_data/` within the project directory (calendar.ics, tasks.csv, Inbox/*.eml)
 
 **Ports:**
 - App: `http://127.0.0.1:5000` (bound to localhost only)
@@ -204,7 +204,7 @@ Reinforces that one NPU engine powers all three capabilities.
 ## Security Measures
 
 ### 1. File System Jailing
-All `read` and `write` tool operations are restricted to `DEMO_DIR` (`C:\Users\{user}\Documents\Demo`).
+All `read` and `write` tool operations are restricted to `DEMO_DIR` (`<project_root>/demo_data`).
 
 ```python
 def _path_in_demo_dir(path):
@@ -272,9 +272,9 @@ Every tool execution is logged with timestamp, tool name, arguments, success/fai
 |----------|-------|
 | `DEFAULT_MODEL` | `phi-silica` |
 | `OPENAI_BASE_URL` | `http://localhost:5272/v1` |
-| `DEMO_DIR` | `~/Documents/Demo` |
-| `MY_DAY_DIR` | `~/Documents/Demo/My_Day` |
-| `MY_DAY_INBOX` | `~/Documents/Demo/My_Day/Inbox` |
+| `DEMO_DIR` | `<project_root>/demo_data` |
+| `MY_DAY_DIR` | `<project_root>/demo_data/My_Day` |
+| `MY_DAY_INBOX` | `<project_root>/demo_data/My_Day/Inbox` |
 | `MAX_CONTENT_LENGTH` | 16 MB |
 | `Flask host` | `127.0.0.1` |
 | `Flask port` | `5000` |

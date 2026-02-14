@@ -208,7 +208,7 @@ class TestPowerShellAllowlist(unittest.TestCase):
 
     def test_allowed_get_childitem(self):
         """Positive test: allowed command should succeed (may error on path, but not blocked)."""
-        result = app_module.execute_tool("exec", {"command": "Get-ChildItem " + app_module.DEMO_DIR})
+        result = app_module.execute_tool("exec", {"command": "Get-ChildItem '" + app_module.DEMO_DIR + "'"})
         self.assertTrue(result["success"])
 
     def test_allowed_get_date(self):

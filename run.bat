@@ -1,9 +1,10 @@
 @echo off
-title Surface Copilot+ PC - NPU Demo
+title Copilot+ PC - NPU Demo
 echo.
 echo ============================================================
-echo   Surface Copilot+ PC - NPU Demo
+echo   Copilot+ PC - NPU Demo
 echo   Powered by Foundry Local + Phi-4 Mini
+echo   (Auto-detects Intel Core Ultra / Snapdragon X)
 echo ============================================================
 echo.
 

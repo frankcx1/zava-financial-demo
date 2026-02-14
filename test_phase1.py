@@ -428,14 +428,11 @@ class TestHTMLTemplate(unittest.TestCase):
         self.html = resp.data.decode()
 
     def test_sidebar_nav_item(self):
-        self.assertIn('data-tab="router"', self.html)
-        self.assertIn("Two-Brain", self.html)
+        self.assertIn('data-tab="auditor"', self.html)
+        self.assertIn("Auditor", self.html)
 
-    def test_hidden_tab_button(self):
-        self.assertIn('id="routerTabBtn"', self.html)
-
-    def test_router_tab_div(self):
-        self.assertIn('id="router-tab"', self.html)
+    def test_auditor_tab_div(self):
+        self.assertIn('id="auditor-tab"', self.html)
 
     def test_router_input_zone(self):
         self.assertIn('id="routerInputZone"', self.html)
@@ -475,11 +472,11 @@ class TestHTMLTemplate(unittest.TestCase):
 
     def test_post_actions(self):
         self.assertIn('id="routerPostActions"', self.html)
-        self.assertIn("resetRouter()", self.html)
+        self.assertIn("resetAuditor()", self.html)
 
-    def test_two_brain_suggestion_chip(self):
-        self.assertIn('data-action="two-brain"', self.html)
-        self.assertIn("Two-Brain Analysis", self.html)
+    def test_no_auditor_suggestion_chip(self):
+        """Auditor chip was removed from the AI Agent tab — users navigate via sidebar."""
+        self.assertNotIn('data-action="auditor-tab"', self.html)
 
     def test_css_classes_present(self):
         self.assertIn(".decision-card", self.html)
@@ -490,16 +487,16 @@ class TestHTMLTemplate(unittest.TestCase):
         self.assertIn(".pii-redacted", self.html)
         self.assertIn("@keyframes lockPulse", self.html)
 
-    def test_router_tab_in_tabmap(self):
-        self.assertIn("router:", self.html)
-        self.assertIn("router-tab", self.html)
-        self.assertIn("routerTabBtn", self.html)
+    def test_auditor_tab_in_tabmap(self):
+        self.assertIn("auditor:", self.html)
+        self.assertIn("auditor-tab", self.html)
+        self.assertIn("auditorTabBtn", self.html)
 
-    def test_js_router_functions(self):
+    def test_js_auditor_functions(self):
         self.assertIn("runRouterAnalysis", self.html)
         self.assertIn("processRouterEvent", self.html)
         self.assertIn("renderTrustReceipt", self.html)
-        self.assertIn("resetRouter", self.html)
+        self.assertIn("resetAuditor", self.html)
         self.assertIn("routerEscalationContext", self.html)
 
     def test_existing_tabs_preserved(self):
