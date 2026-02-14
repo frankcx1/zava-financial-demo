@@ -39,3 +39,4 @@ _junk/
 
 # Claude Code local settings (user-specific)
 .claude/
+memory/

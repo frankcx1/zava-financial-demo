@@ -22,6 +22,9 @@ import re
 import unittest
 from unittest.mock import patch, MagicMock
 
+# Allow running from tests/ subdirectory
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Patch OpenAI before importing the app
 mock_openai_client = MagicMock()
 mock_openai_client.models.list.return_value = []

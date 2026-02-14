@@ -8,6 +8,9 @@ import sys
 import json
 import threading
 import unittest
+
+# Allow running from tests/ subdirectory
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from unittest.mock import patch, MagicMock
 
 # Patch OpenAI before importing the app
