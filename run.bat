@@ -25,15 +25,9 @@ if errorlevel 1 (
     echo.
 )
 
-:: Setup demo data if needed
-if not exist "%USERPROFILE%\Documents\Demo\My_Day" (
-    echo [INFO] Setting up demo data...
-    if exist "%~dp0demo_data" (
-        xcopy "%~dp0demo_data" "%USERPROFILE%\Documents\Demo\" /E /I /Y >nul 2>&1
-        echo [OK] Demo data copied to Documents\Demo
-    ) else (
-        echo [WARN] demo_data folder not found. Create Documents\Demo\My_Day manually.
-    )
+:: Verify demo data exists in repo (app reads from demo_data/ directly)
+if not exist "%~dp0demo_data\My_Day" (
+    echo [WARN] demo_data\My_Day not found. Demo data ships with the repo.
     echo.
 )
 
