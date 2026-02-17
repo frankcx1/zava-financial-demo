@@ -1713,6 +1713,46 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .audit-stamp-line { font-size: 0.9em; opacity: 0.8; padding: 3px 0; }
         .auditor-results-actions { display: flex; gap: 12px; margin-top: 20px; }
 
+        /* Mode Selector */
+        .mode-cards { display: flex; gap: 16px; justify-content: center; margin: 24px 0; flex-wrap: wrap; }
+        .mode-card { flex: 1; max-width: 280px; min-width: 200px; padding: 24px; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; cursor: pointer; text-align: center; transition: all 0.2s; }
+        .mode-card:hover { border-color: rgba(0,120,212,0.6); background: rgba(0,120,212,0.1); }
+        .mode-card-icon { font-size: 2em; margin-bottom: 8px; }
+        .mode-card-title { font-weight: 600; font-size: 1.05em; margin-bottom: 8px; }
+        .mode-card-desc { font-size: 0.85em; opacity: 0.7; line-height: 1.4; }
+
+        /* Claims Card */
+        .claim-item { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .claim-item:last-child { border-bottom: none; }
+        .claim-category { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; margin-right: 8px; }
+        .claim-category.superlative, .claim-category.comparative { background: rgba(244,67,54,0.2); color: #FF6B6B; }
+        .claim-category.stat_claim, .claim-category.stat-claim { background: rgba(255,152,0,0.2); color: #FFB74D; }
+        .claim-category.ai_overclaim, .claim-category.ai-overclaim { background: rgba(156,39,176,0.2); color: #CE93D8; }
+        .claim-category.green_claim, .claim-category.green-claim { background: rgba(76,175,80,0.2); color: #81C784; }
+        .claim-category.customer_evidence, .claim-category.customer-evidence { background: rgba(33,150,243,0.2); color: #64B5F6; }
+        .claim-category.pricing { background: rgba(255,193,7,0.2); color: #FFD54F; }
+        .claim-category.absolute { background: rgba(244,67,54,0.2); color: #FF6B6B; }
+        .claim-text { font-style: italic; color: #FFB900; margin: 6px 0; }
+        .claim-risk { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 0.75em; font-weight: 700; }
+        .claim-risk.high { background: rgba(244,67,54,0.2); color: #FF6B6B; }
+        .claim-risk.medium { background: rgba(255,185,0,0.2); color: #FFB900; }
+        .claim-risk.low { background: rgba(76,175,80,0.2); color: #81C784; }
+        .claim-issue { font-size: 0.9em; margin-top: 4px; }
+        .claim-substantiation { font-size: 0.85em; opacity: 0.7; margin-top: 4px; }
+        .claim-recommendation { font-size: 0.85em; opacity: 0.7; font-style: italic; margin-top: 4px; }
+
+        /* Verdict Card */
+        .verdict-card { padding: 20px; border-radius: 12px; text-align: center; margin: 16px 0; }
+        .verdict-card.verdict-ok { border: 2px solid #4CAF50; background: rgba(76,175,80,0.08); }
+        .verdict-card.verdict-intake { border: 2px solid #f44336; background: rgba(244,67,54,0.08); }
+        .verdict-badge { font-size: 1.3em; font-weight: 700; margin-bottom: 8px; }
+        .verdict-ok .verdict-badge { color: #4CAF50; }
+        .verdict-intake .verdict-badge { color: #f44336; }
+        .verdict-reason { font-size: 0.9em; opacity: 0.8; margin-bottom: 12px; line-height: 1.4; }
+        .verdict-counts { display: flex; gap: 16px; justify-content: center; margin-top: 12px; font-size: 0.85em; }
+        .verdict-count { padding: 4px 10px; border-radius: 4px; background: rgba(255,255,255,0.06); }
+        .trigger-tag { display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 4px; font-size: 0.8em; background: rgba(244,67,54,0.2); color: #FF6B6B; }
+
         /* ID Verification Styles */
         .camera-section {
             background: rgba(255,255,255,0.05);
@@ -2322,10 +2362,26 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         <!-- Auditor Tab (unified: structured analysis + smart escalation) -->
         <div id="auditor-tab" class="tab-content">
-            <div class="auditor-header">&#128274; AUDITOR</div>
 
-            <!-- State 1: Input Zone -->
-            <div id="routerInputZone">
+            <!-- Mode Selector -->
+            <div id="auditorModeSelector">
+                <div class="auditor-header">&#128274; AUDITOR</div>
+                <div class="mode-cards">
+                    <div class="mode-card" id="modeCardContract" data-mode="contract">
+                        <div class="mode-card-icon">&#128274;</div>
+                        <div class="mode-card-title">Contract / Legal Review</div>
+                        <div class="mode-card-desc">Structured risk analysis of contracts, NDAs, and legal documents with smart escalation.</div>
+                    </div>
+                    <div class="mode-card" id="modeCardMarketing" data-mode="marketing">
+                        <div class="mode-card-icon">&#128226;</div>
+                        <div class="mode-card-title">Marketing / Campaign Review</div>
+                        <div class="mode-card-desc">CELA compliance check for marketing assets. Claims analysis, substantiation requirements, and intake determination.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- State 1a: Contract Input Zone -->
+            <div id="routerInputZone" style="display:none;">
                 <div class="auditor-dropzone" id="routerDropzone">
                     <div class="dropzone-icon">&#128274;</div>
                     <div class="dropzone-title">Drop a confidential document</div>
@@ -2345,6 +2401,30 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     <div style="opacity:0.6;font-size:0.9em;margin-bottom:8px;">Quick demo:</div>
                     <button class="auditor-demo-btn" id="routerDemoBtn">&#128196; Analyze Demo NDA</button>
                     <button class="auditor-demo-btn" id="routerEscalationDemoBtn" style="margin-top:8px;border-color:rgba(255,185,0,0.4);color:#FFB900;">&#9888;&#65039; Demo: Escalation Path</button>
+                </div>
+                <div style="text-align:center;margin-top:16px;">
+                    <a href="#" id="contractBackLink" style="color:rgba(255,255,255,0.5);font-size:0.85em;text-decoration:none;">&larr; Back to mode selection</a>
+                </div>
+            </div>
+
+            <!-- State 1b: Marketing Input Zone -->
+            <div id="marketingInputZone" style="display:none;">
+                <div class="auditor-header">&#128226; MARKETING / CAMPAIGN REVIEW</div>
+                <div class="auditor-dropzone" id="marketingDropzone">
+                    <div class="dropzone-icon">&#128226;</div>
+                    <div class="dropzone-title">Drop a marketing asset for CELA review</div>
+                    <div class="dropzone-subtitle">Claims analysis, substantiation check, and CELA intake determination — all on-device.</div>
+                    <input type="file" id="marketingFileInput" accept=".pdf,.docx,.txt,.md" style="display:none;">
+                    <button class="auditor-upload-btn" id="marketingUploadBtn">Select File</button>
+                    <div class="dropzone-formats">PDF &bull; DOCX &bull; TXT &bull; MD</div>
+                </div>
+                <div class="auditor-demo-section" style="margin-top:20px;">
+                    <div style="opacity:0.6;font-size:0.9em;margin-bottom:8px;">Quick demo:</div>
+                    <button class="auditor-demo-btn" id="marketingDemoCleanBtn">&#128196; Review: Clean Campaign Page</button>
+                    <button class="auditor-demo-btn" id="marketingDemoRiskyBtn" style="margin-top:8px;border-color:rgba(255,185,0,0.4);color:#FFB900;">&#9888;&#65039; Review: Risky Campaign Brief</button>
+                </div>
+                <div style="text-align:center;margin-top:16px;">
+                    <a href="#" id="marketingBackLink" style="color:rgba(255,255,255,0.5);font-size:0.85em;text-decoration:none;">&larr; Back to mode selection</a>
                 </div>
             </div>
 
@@ -4312,7 +4392,149 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 '<div class="audit-stamp-line" style="color:#00CC6A;margin-top:8px;">Network calls: 0 \u2022 Data transmitted: 0 bytes</div>';
         }
 
-        // --- File upload / demo buttons ---
+        // --- Marketing mode render functions ---
+
+        function renderClaimsCard(findings) {
+            if (!findings || findings.length === 0) return;
+            var cards = document.getElementById("auditorResultsCards");
+            var html = '<div class="result-card">' +
+                '<div class="result-card-header">\u26A0\uFE0F CLAIMS ANALYSIS (' + findings.length + ' findings)</div>';
+            findings.forEach(function(f) {
+                var riskClass = (f.risk_level || "medium").toLowerCase();
+                var riskLabel = (f.risk_level || "MEDIUM").toUpperCase();
+                var catClass = (f.category || "").toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+                html += '<div class="claim-item">' +
+                    '<div><span class="claim-category ' + catClass + '">' + (f.category || "General") + '</span>' +
+                    '<span class="claim-risk ' + riskClass + '">' + riskLabel + '</span></div>' +
+                    '<div class="claim-text">\u201C' + (f.claim_text || "") + '\u201D</div>' +
+                    '<div class="claim-issue">' + (f.issue || "") + '</div>' +
+                    (f.substantiation ? '<div class="claim-substantiation">\uD83D\uDCCB ' + f.substantiation + '</div>' : '') +
+                    (f.recommendation ? '<div class="claim-recommendation">\u2192 ' + f.recommendation + '</div>' : '') +
+                    '</div>';
+            });
+            html += '</div>';
+            cards.innerHTML += html;
+        }
+
+        function renderVerdictCard(data) {
+            var cards = document.getElementById("auditorResultsCards");
+            var isOk = (data.verdict || "").toUpperCase().indexOf("SELF-SERVICE") !== -1;
+            var verdictClass = isOk ? "verdict-ok" : "verdict-intake";
+            var verdictIcon = isOk ? "\u2705" : "\uD83D\uDD34";
+            var html = '<div class="verdict-card ' + verdictClass + '">' +
+                '<div class="verdict-badge">' + verdictIcon + ' ' + (data.verdict || "UNKNOWN") + '</div>' +
+                '<div class="verdict-reason">' + (data.verdict_reason || "") + '</div>';
+
+            // Trigger categories
+            if (data.trigger_categories && data.trigger_categories !== "None") {
+                var tags = data.trigger_categories.split(',');
+                html += '<div style="margin:8px 0;">';
+                tags.forEach(function(tag) {
+                    html += '<span class="trigger-tag">' + tag.trim() + '</span>';
+                });
+                html += '</div>';
+            }
+
+            // Counts
+            html += '<div class="verdict-counts">' +
+                '<div class="verdict-count">Total: ' + (data.total_findings || "0") + '</div>' +
+                '<div class="verdict-count" style="color:#FF6B6B;">High: ' + (data.high_risk_count || "0") + '</div>' +
+                '<div class="verdict-count" style="color:#FFB900;">Medium: ' + (data.medium_risk_count || "0") + '</div>' +
+                '<div class="verdict-count" style="color:#81C784;">Low: ' + (data.low_risk_count || "0") + '</div>' +
+                '</div></div>';
+            cards.innerHTML += html;
+        }
+
+        // --- Auditor mode state ---
+        var currentAuditorMode = "";
+
+        // --- Mode selector handlers ---
+        document.getElementById("modeCardContract").addEventListener("click", function() {
+            currentAuditorMode = "contract";
+            document.getElementById("auditorModeSelector").style.display = "none";
+            document.getElementById("routerInputZone").style.display = "block";
+            document.getElementById("marketingInputZone").style.display = "none";
+        });
+        document.getElementById("modeCardMarketing").addEventListener("click", function() {
+            currentAuditorMode = "marketing";
+            document.getElementById("auditorModeSelector").style.display = "none";
+            document.getElementById("routerInputZone").style.display = "none";
+            document.getElementById("marketingInputZone").style.display = "block";
+        });
+
+        // Back links
+        document.getElementById("contractBackLink").addEventListener("click", function(e) {
+            e.preventDefault();
+            document.getElementById("routerInputZone").style.display = "none";
+            document.getElementById("auditorModeSelector").style.display = "block";
+            currentAuditorMode = "";
+        });
+        document.getElementById("marketingBackLink").addEventListener("click", function(e) {
+            e.preventDefault();
+            document.getElementById("marketingInputZone").style.display = "none";
+            document.getElementById("auditorModeSelector").style.display = "block";
+            currentAuditorMode = "";
+        });
+
+        // --- Marketing file upload + demo buttons ---
+        document.getElementById("marketingUploadBtn").addEventListener("click", function() {
+            document.getElementById("marketingFileInput").click();
+        });
+        document.getElementById("marketingFileInput").addEventListener("change", function(e) {
+            var file = e.target.files[0];
+            if (!file) return;
+            var formData = new FormData();
+            formData.append("file", file);
+            fetch("/upload-to-demo", { method: "POST", body: formData })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Upload failed: " + data.error); return; }
+                routerDocText = data.text || "";
+                routerDocName = data.filename || file.name;
+                runRouterAnalysis();
+            });
+        });
+
+        // Marketing drag and drop
+        var marketingDZ = document.getElementById("marketingDropzone");
+        marketingDZ.addEventListener("dragover", function(e) { e.preventDefault(); marketingDZ.classList.add("dragover"); });
+        marketingDZ.addEventListener("dragleave", function() { marketingDZ.classList.remove("dragover"); });
+        marketingDZ.addEventListener("drop", function(e) {
+            e.preventDefault();
+            marketingDZ.classList.remove("dragover");
+            var file = e.dataTransfer.files[0];
+            if (file) {
+                var input = document.getElementById("marketingFileInput");
+                var dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                input.dispatchEvent(new Event("change"));
+            }
+        });
+
+        // Marketing demo buttons
+        document.getElementById("marketingDemoCleanBtn").addEventListener("click", function() {
+            fetch("/auditor-marketing-demo-doc")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Demo document not found: " + data.error); return; }
+                routerDocText = data.text;
+                routerDocName = data.filename;
+                runRouterAnalysis();
+            });
+        });
+        document.getElementById("marketingDemoRiskyBtn").addEventListener("click", function() {
+            fetch("/auditor-marketing-escalation-demo-doc")
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) { alert("Escalation demo document not found: " + data.error); return; }
+                routerDocText = data.text;
+                routerDocName = data.filename;
+                runRouterAnalysis();
+            });
+        });
+
+        // --- File upload / demo buttons (Contract mode) ---
 
         document.getElementById("routerUploadBtn").addEventListener("click", function() {
             document.getElementById("routerFileInput").click();
@@ -4394,7 +4616,9 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             pendingAuditStamp = null;
 
             // Switch to results view
+            document.getElementById("auditorModeSelector").style.display = "none";
             document.getElementById("routerInputZone").style.display = "none";
+            document.getElementById("marketingInputZone").style.display = "none";
             document.getElementById("routerDecision").style.display = "block";
             document.getElementById("routerDecisionCard").style.display = "none";
             document.getElementById("escalationConsent").style.display = "none";
@@ -4407,6 +4631,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 '<div class="log-step active"><span class="spinner"></span> Starting analysis...</div>';
 
             var body = {};
+            body.mode = currentAuditorMode || "contract";
             if (routerDocText) {
                 body.text = routerDocText;
                 body.filename = routerDocName;
@@ -4506,6 +4731,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             else if (evt.type === "summary") {
                 renderSummaryCard(evt.text);
             }
+            else if (evt.type === "claims") {
+                renderClaimsCard(evt.findings);
+            }
+            else if (evt.type === "verdict") {
+                renderVerdictCard(evt);
+            }
             else if (evt.type === "decision_card") {
                 resolveRouterSpinners();
 
@@ -4569,6 +4800,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 }
             }
             else if (evt.type === "escalation_available") {
+                document.getElementById("routerDecisionCard").style.display = "block";
                 document.getElementById("escalationConsent").style.display = "block";
 
                 // Populate diff
@@ -4591,10 +4823,13 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 routerEscalationContext.estimated_cost = evt.estimated_cost;
             }
             else if (evt.type === "audit") {
-                // Save audit stamp data; render immediately if HIGH or no escalation
+                // Save audit stamp data; render immediately if no escalation pending
                 pendingAuditStamp = evt;
-                if (routerEscalationContext.confidence === "HIGH") {
+                var noEscalation = routerEscalationContext.confidence === "HIGH" ||
+                    (evt.mode === "marketing" && !routerEscalationContext.estimated_cost);
+                if (noEscalation) {
                     renderAuditStamp(evt);
+                    document.getElementById("routerPostActions").style.display = "block";
                 }
             }
             else if (evt.type === "error") {
@@ -4707,7 +4942,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             routerRunning = false;
             routerEscalationContext = {};
             pendingAuditStamp = null;
-            document.getElementById("routerInputZone").style.display = "block";
+            currentAuditorMode = "";
+            document.getElementById("auditorModeSelector").style.display = "block";
+            document.getElementById("routerInputZone").style.display = "none";
+            document.getElementById("marketingInputZone").style.display = "none";
             document.getElementById("routerDecision").style.display = "none";
             document.getElementById("routerDecisionCard").style.display = "none";
             document.getElementById("escalationConsent").style.display = "none";
@@ -5848,6 +6086,400 @@ Date: February 1, 2026
 """
 
 
+MARKETING_CLEAN_DOC = """\
+SURFACE COPILOT+ PC — ENTERPRISE LANDING PAGE DRAFT
+Asset Type: Webpage / Microsite
+Target Audience: Commercial / Enterprise IT Decision Makers
+Region: United States
+Silicon: Intel Core Ultra (different different different Core Ultra 200V)
+
+============================================================
+HERO SECTION
+============================================================
+
+Surface Copilot+ PC — Built for the AI-Powered Workplace
+
+Your team's next PC does more than run apps — it thinks alongside them.
+Surface Copilot+ PC brings AI experiences directly to the device, powered
+by a dedicated Neural Processing Unit (NPU) so employees can work smarter
+without sending data to the cloud.
+
+[CTA: Talk to a Surface Specialist]
+
+============================================================
+KEY MESSAGING SECTION
+============================================================
+
+WHY SURFACE COPILOT+ PC FOR ENTERPRISE
+
+On-Device AI That Respects Your Data Policies
+Surface Copilot+ PC processes AI workloads locally using the built-in NPU,
+keeping sensitive data on the device. Copilot+ PC experiences are designed
+to help employees summarize, search, and create — right from their laptop.
+
+Availability varies by experience, silicon, and market.
+Learn more: aka.ms/copilotpluspcspro
+
+Built for Microsoft 365 and Your Existing Stack
+Surface Copilot+ PCs integrate with Microsoft 365, Microsoft Intune, and
+your organization's security policies out of the box. IT teams can deploy
+and manage Surface devices using familiar tools.
+
+Enterprise-Grade Security from Chip to Cloud
+Every Surface Copilot+ PC ships with Microsoft Pluton security processor,
+Secured-core PC capabilities, and Windows Hello for Business. Your security
+team gets hardware-rooted protection without additional configuration.
+
+============================================================
+CUSTOMER EVIDENCE SECTION
+============================================================
+
+"Surface devices have simplified our deployment process across 12,000
+endpoints." — Maria Torres, VP of IT Infrastructure, Contoso Financial
+(Quote used with written permission per Customer Quote Agreement.
+Contoso Financial received no compensation for this testimonial.)
+
+============================================================
+AI EXPERIENCES SECTION
+============================================================
+
+Copilot+ PC Experiences Available on Surface
+
+Recall (Preview) — Find anything you've seen on your PC using natural
+language search. Recall processes and stores snapshots locally on the
+device using the NPU.
+Note: Recall is currently in preview through Windows Insider Program and
+is not yet generally available. Feature availability and timeline subject
+to change.
+
+Live Captions with Translation — Get real-time translated captions in
+over 40 languages, processed entirely on-device.
+
+Cocreator in Paint — Generate and iterate on images using text prompts
+and drawing, powered by on-device AI.
+
+============================================================
+CALL TO ACTION
+============================================================
+
+Ready to bring AI-powered devices to your workforce?
+Contact your Microsoft Surface account team to schedule a demo and
+discuss volume licensing.
+
+[CTA: Request a Demo]  [CTA: View Surface for Business]
+
+============================================================
+DISCLAIMERS / FOOTER
+============================================================
+
+Copilot+ PC experiences availability varies by feature, device, market,
+and silicon. Some experiences require enrollment in Windows Insider
+Program and are not generally available.
+Learn more at aka.ms/copilotpluspcspro
+
+© 2026 Microsoft Corporation. All rights reserved.
+"""
+
+
+MARKETING_RISKY_DOC = """\
+SURFACE COPILOT+ PC — CAMPAIGN BRIEF: "THE SMARTEST PC EVER BUILT"
+Asset Type: Above-the-Line Campaign (Web + OOH + Digital Video)
+Target Audience: Commercial + Consumer
+Region: Global (including China)
+Authored by: CVP, Surface Marketing
+
+============================================================
+HERO SECTION
+============================================================
+
+The Most Intelligent PC Ever Made
+
+Surface Copilot+ PC is the only laptop that truly understands you.
+With the most powerful NPU on the market, Surface delivers AI experiences
+no other PC can match — making you 40% more productive from day one.
+
+"I switched from MacBook and I'll never go back." — anonymous user review
+
+[CTA: Buy Now — Starting at $999]
+
+============================================================
+PERFORMANCE CLAIMS SECTION
+============================================================
+
+UNMATCHED PERFORMANCE. PROVEN RESULTS.
+
+Surface Copilot+ PC outperforms every competitor in AI workload benchmarks:
+- 3x faster AI processing than the leading competitor's laptop
+- 47% improvement in battery life compared to previous generation
+- Reduces meeting prep time by 2 hours per week
+- 60% less energy consumption than traditional PCs — our greenest Surface ever
+- NPU delivers 45 TOPS, the highest sustained AI throughput of any laptop
+
+Customers report an average ROI of 340% within the first year of deployment.
+
+"Surface Copilot+ PC cut our incident response time in half and saved us
+$2.3 million annually." — Senior IT Leader, Major US Bank
+(Name withheld for confidentiality)
+
+============================================================
+AI CAPABILITIES SECTION
+============================================================
+
+AI THAT WORKS FOR YOU — RESPONSIBLY AND SECURELY
+
+Surface Copilot+ PC is built on Microsoft's responsible AI-compliant
+platform, ensuring every AI interaction meets the highest ethical
+standards. Our AI systems are guaranteed free from bias and always
+produce accurate, trustworthy results.
+
+Key AI Experiences:
+- Recall: Perfect photographic memory for your PC. Never lose anything again.
+  Available on all Copilot+ PCs across all regions.
+- AI-Powered Health Insights: Surface can help monitor your posture and
+  suggest ergonomic adjustments, promoting healthier work habits.
+- Autonomous Email Triage: AI reads, prioritizes, and responds to your
+  emails automatically — learning your communication style over time.
+- Smart Document Classification: AI automatically categorizes sensitive
+  documents for compliance, meeting regulatory requirements for financial
+  services and healthcare organizations.
+
+============================================================
+CUSTOMER EVIDENCE SECTION
+============================================================
+
+TRUSTED BY THE WORLD'S BEST COMPANIES
+
+[Logos: JPMorgan Chase, Bank of America, Starbucks, Mayo Clinic, NASA]
+
+"We deployed 50,000 Surface Copilot+ PCs across our trading floors and
+back-office operations. The AI capabilities have transformed how our
+analysts work." — Global Head of Technology, JPMorgan Chase
+
+Microsoft was recently ranked #1 in Gartner's Magic Quadrant for
+Endpoint Management, proving that Surface is the enterprise standard.
+
+============================================================
+SUSTAINABILITY SECTION
+============================================================
+
+GOOD FOR YOUR BUSINESS. BETTER FOR THE PLANET.
+
+Surface Copilot+ PC is carbon neutral and built with 100% recycled
+ocean-bound plastic. By choosing Surface, your organization reduces
+its carbon footprint by up to 35% compared to industry alternatives.
+
+We're committed to being the most sustainable PC brand in the world.
+
+============================================================
+PRICING AND AVAILABILITY
+============================================================
+
+Available now worldwide — order today and get free next-day delivery!
+
+Surface Copilot+ PC — from $999 (save $200 for a limited time!)
+Surface Copilot+ PC with Copilot Pro — from $1,199
+Enterprise Volume Licensing — Contact us for exclusive pricing
+
+Best laptop deal of the year. Guaranteed lowest price.
+
+============================================================
+CONTEST / PROMOTION
+============================================================
+
+WIN A SURFACE STUDIO SETUP!
+Purchase any Surface Copilot+ PC before March 31, 2026 and enter to
+win a complete Surface Studio workspace valued at $5,000.
+No purchase necessary. Void where prohibited.
+
+============================================================
+FOOTER
+============================================================
+
+© 2026 Microsoft Corporation. All rights reserved.
+"""
+
+
+# --- Marketing CELA hardcoded findings for demo docs ---
+
+_MARKETING_CLEAN_FINDINGS = [
+    {
+        "category": "AI Claims",
+        "claim_text": "AI-Powered Workplace",
+        "risk_level": "LOW",
+        "issue": "Verify 'AI-Powered' aligns with approved Microsoft AI terminology guidelines",
+        "substantiation": "Check against current brand-approved AI phrasing list",
+        "recommendation": "Confirm term is on approved list; likely acceptable for enterprise audience"
+    },
+    {
+        "category": "AI Claims",
+        "claim_text": "Find anything you've seen on your PC",
+        "risk_level": "LOW",
+        "issue": "Broad capability claim for Recall (Preview) — could be read as overclaim",
+        "substantiation": "Feature is in preview and has known limitations",
+        "recommendation": "Already disclaimed as preview; consider softening to 'helps you find things'"
+    },
+    {
+        "category": "Customer Evidence",
+        "claim_text": "Surface devices have simplified our deployment process across 12,000 endpoints.",
+        "risk_level": "LOW",
+        "issue": "Customer testimonial present — verify Customer Quote Agreement (CQA) is on file",
+        "substantiation": "CQA documentation noted in asset; verify file exists",
+        "recommendation": "Confirm CQA reference number is current and permission has not expired"
+    },
+]
+
+_MARKETING_CLEAN_VERDICT = {
+    "verdict": "SELF-SERVICE OK",
+    "verdict_reason": "Asset uses measured language with appropriate disclaimers. No comparative claims, no unsubstantiated statistics, no prohibited AI messaging. Minor terminology items flagged for verification.",
+    "trigger_categories": "None",
+    "total_findings": "3",
+    "high_risk_count": "0",
+    "medium_risk_count": "0",
+    "low_risk_count": "3"
+}
+
+_MARKETING_RISKY_FINDINGS = [
+    {
+        "category": "Superlative",
+        "claim_text": "The Most Intelligent PC Ever Made",
+        "risk_level": "HIGH",
+        "issue": "Unsubstantiated superlative — 'most intelligent' requires benchmark proof",
+        "substantiation": "Objective benchmark data comparing all PCs ever made required",
+        "recommendation": "Remove superlative or replace with substantiated claim"
+    },
+    {
+        "category": "Superlative",
+        "claim_text": "the only laptop that truly understands you",
+        "risk_level": "HIGH",
+        "issue": "Exclusivity claim ('only') plus anthropomorphic AI claim ('understands you')",
+        "substantiation": "Cannot prove exclusivity across all competitors; 'understands' implies sentience",
+        "recommendation": "Remove 'only' and rephrase to describe specific AI capabilities"
+    },
+    {
+        "category": "Stat Claim",
+        "claim_text": "making you 40% more productive from day one",
+        "risk_level": "HIGH",
+        "issue": "Unsubstantiated productivity statistic with absolute timeline",
+        "substantiation": "Peer-reviewed study or controlled benchmark required with methodology",
+        "recommendation": "Remove stat or add source citation and qualifying language"
+    },
+    {
+        "category": "Comparative",
+        "claim_text": "3x faster AI processing than the leading competitor's laptop",
+        "risk_level": "HIGH",
+        "issue": "Comparative claim against unnamed competitor — requires benchmark data",
+        "substantiation": "Named competitor, specific benchmark, test conditions required",
+        "recommendation": "Remove comparative or provide verifiable benchmark data with methodology"
+    },
+    {
+        "category": "Stat Claim",
+        "claim_text": "47% improvement in battery life compared to previous generation",
+        "risk_level": "HIGH",
+        "issue": "Performance improvement claim without test methodology",
+        "substantiation": "Internal benchmark data with test conditions and methodology",
+        "recommendation": "Add footnote with specific test conditions and baseline model"
+    },
+    {
+        "category": "Green Claim",
+        "claim_text": "60% less energy consumption — our greenest Surface ever",
+        "risk_level": "HIGH",
+        "issue": "Unsubstantiated environmental claim plus superlative 'greenest'",
+        "substantiation": "Energy Star data or EPA-recognized test methodology required",
+        "recommendation": "Remove 'greenest' superlative; add energy comparison methodology"
+    },
+    {
+        "category": "Stat Claim",
+        "claim_text": "Customers report an average ROI of 340% within the first year",
+        "risk_level": "HIGH",
+        "issue": "Unsubstantiated ROI claim — requires customer study data",
+        "substantiation": "Customer survey or case study with sample size and methodology",
+        "recommendation": "Remove or replace with verified case study reference"
+    },
+    {
+        "category": "Customer Evidence",
+        "claim_text": "anonymous user review — 'I switched from MacBook and I'll never go back'",
+        "risk_level": "HIGH",
+        "issue": "Anonymous testimonial is explicitly prohibited by CELA guidelines",
+        "substantiation": "All testimonials must be attributable with documented permission",
+        "recommendation": "Remove anonymous quote or obtain named, documented permission"
+    },
+    {
+        "category": "Customer Evidence",
+        "claim_text": "Senior IT Leader, Major US Bank (Name withheld for confidentiality)",
+        "risk_level": "HIGH",
+        "issue": "Withheld-name testimonial with specific dollar claim ($2.3M) — prohibited",
+        "substantiation": "Named attribution with Customer Quote Agreement required",
+        "recommendation": "Obtain named attribution or remove testimonial entirely"
+    },
+    {
+        "category": "Customer Evidence",
+        "claim_text": "[Logos: JPMorgan Chase, Bank of America, Starbucks, Mayo Clinic, NASA]",
+        "risk_level": "HIGH",
+        "issue": "Customer logos require explicit logo usage agreements from each company",
+        "substantiation": "Logo usage agreements and External Communications Approval (ECA) for each",
+        "recommendation": "Remove logos until all agreements are documented and current"
+    },
+    {
+        "category": "AI Overclaim",
+        "claim_text": "responsible AI-compliant platform... guaranteed free from bias and always produce accurate results",
+        "risk_level": "HIGH",
+        "issue": "Prohibited AI messaging — cannot claim 'guaranteed free from bias' or 'always accurate'",
+        "substantiation": "These claims are inherently unsubstantiable for any AI system",
+        "recommendation": "Remove absolute AI claims; use approved Responsible AI language only"
+    },
+    {
+        "category": "AI Overclaim",
+        "claim_text": "Recall: Perfect photographic memory... Never lose anything again",
+        "risk_level": "HIGH",
+        "issue": "Overclaim for Preview feature — 'perfect' and 'never' are absolute claims",
+        "substantiation": "Feature is in preview, has known limitations, not GA in all regions",
+        "recommendation": "Remove 'perfect' and 'never'; add preview/availability disclaimers"
+    },
+    {
+        "category": "AI Overclaim",
+        "claim_text": "Autonomous Email Triage: AI reads, prioritizes, and responds to your emails automatically",
+        "risk_level": "MEDIUM",
+        "issue": "Autonomous AI claim for email handling — sensitive use case",
+        "substantiation": "Feature must have human oversight; 'autonomous' implies no human control",
+        "recommendation": "Replace 'autonomous' with 'AI-assisted'; clarify human remains in control"
+    },
+    {
+        "category": "Green Claim",
+        "claim_text": "carbon neutral and built with 100% recycled ocean-bound plastic",
+        "risk_level": "HIGH",
+        "issue": "Environmental claims require substantiation per FTC Green Guides",
+        "substantiation": "Third-party certification for carbon neutrality and recycled content claims",
+        "recommendation": "Add certification references; verify '100%' recycled content claim accuracy"
+    },
+    {
+        "category": "Pricing",
+        "claim_text": "Guaranteed lowest price",
+        "risk_level": "HIGH",
+        "issue": "Absolute pricing guarantee — legally binding and extremely difficult to substantiate",
+        "substantiation": "Price matching program documentation and monitoring system required",
+        "recommendation": "Remove 'guaranteed lowest price' — replace with factual pricing"
+    },
+    {
+        "category": "Stat Claim",
+        "claim_text": "save $200 for a limited time",
+        "risk_level": "MEDIUM",
+        "issue": "Limited time offer must have defined end date per FTC guidelines",
+        "substantiation": "Promotion end date and regular price documentation",
+        "recommendation": "Add specific promotion end date and reference regular price"
+    },
+]
+
+_MARKETING_RISKY_VERDICT = {
+    "verdict": "CELA INTAKE REQUIRED",
+    "verdict_reason": "Asset contains multiple mandatory intake triggers: above-the-line campaign, CVP authorship, comparative claims, unsubstantiated statistics, prohibited AI messaging, anonymous testimonials, green claims, pricing guarantees, and sweepstakes promotion.",
+    "trigger_categories": "Superlative, Comparative, Stat Claims, AI Overclaim, Green Claims, Customer Evidence, Pricing, Promotions",
+    "total_findings": "16",
+    "high_risk_count": "13",
+    "medium_risk_count": "2",
+    "low_risk_count": "1"
+}
+
+
 @app.route('/auditor-escalation-demo-doc', methods=['GET'])
 def auditor_escalation_demo_doc():
     """Return the cross-border IP license document for escalation demo."""
@@ -5858,6 +6490,27 @@ def auditor_escalation_demo_doc():
         "word_count": len(text.split())
     })
 
+
+@app.route('/auditor-marketing-demo-doc', methods=['GET'])
+def auditor_marketing_demo_doc():
+    """Return the clean marketing campaign document for self-service OK demo."""
+    text = MARKETING_CLEAN_DOC
+    return jsonify({
+        "filename": "marketing_surface_campaign_clean.txt",
+        "text": text,
+        "word_count": len(text.split())
+    })
+
+
+@app.route('/auditor-marketing-escalation-demo-doc', methods=['GET'])
+def auditor_marketing_escalation_demo_doc():
+    """Return the risky marketing campaign document for CELA intake demo."""
+    text = MARKETING_RISKY_DOC
+    return jsonify({
+        "filename": "marketing_surface_campaign_risky.txt",
+        "text": text,
+        "word_count": len(text.split())
+    })
 
 
 def _estimate_pii_location(text, char_pos):
@@ -5984,6 +6637,56 @@ def _parse_analysis_response(response_text):
         ]
 
     return risk_findings, obligation_findings, used_fallback
+
+
+def _parse_marketing_response(ai_response):
+    """Parse marketing CELA review output into structured findings and verdict."""
+    claims = []
+    current_claim = {}
+    verdict_data = {}
+
+    for line in ai_response.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        upper = stripped.upper()
+
+        # Claim-level fields
+        if upper.startswith('CATEGORY:'):
+            if current_claim and current_claim.get('claim_text'):
+                claims.append(current_claim)
+            current_claim = {'category': stripped.split(':', 1)[1].strip()}
+        elif upper.startswith('CLAIM_TEXT:'):
+            current_claim['claim_text'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('RISK_LEVEL:'):
+            current_claim['risk_level'] = stripped.split(':', 1)[1].strip().upper()
+        elif upper.startswith('ISSUE:'):
+            current_claim['issue'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('SUBSTANTIATION:'):
+            current_claim['substantiation'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('RECOMMENDATION:') and current_claim:
+            current_claim['recommendation'] = stripped.split(':', 1)[1].strip()
+
+        # Verdict-level fields
+        elif upper.startswith('VERDICT:'):
+            verdict_data['verdict'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('VERDICT_REASON:'):
+            verdict_data['verdict_reason'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('TRIGGER_CATEGORIES:'):
+            verdict_data['trigger_categories'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('TOTAL_FINDINGS:'):
+            verdict_data['total_findings'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('HIGH_RISK_COUNT:'):
+            verdict_data['high_risk_count'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('MEDIUM_RISK_COUNT:'):
+            verdict_data['medium_risk_count'] = stripped.split(':', 1)[1].strip()
+        elif upper.startswith('LOW_RISK_COUNT:'):
+            verdict_data['low_risk_count'] = stripped.split(':', 1)[1].strip()
+
+    if current_claim and current_claim.get('claim_text'):
+        claims.append(current_claim)
+
+    return claims, verdict_data
 
 
 @app.route('/analyze-id', methods=['POST'])
@@ -6169,6 +6872,172 @@ def _scan_pii(text):
     return findings
 
 
+_MARKETING_FLAGS = {
+    "superlative": re.compile(r'\b(best|only|most|leading|unmatched|revolutionary|perfect|greatest|smartest|first-ever|#1|number one)\b', re.I),
+    "comparative": re.compile(r'\b(faster than|better than|outperforms?|compared to|unlike competitors?|more \w+ than|less \w+ than)\b'
+                              r'|no other .{0,30} can\b', re.I),
+    "absolute": re.compile(r'\b(guaranteed|100%|never|always|zero)\b', re.I),
+    "ai_overclaim": re.compile(r'\b(bias.free|always accurate|autonomous(?:ly)?|ethical ai|responsible ai.compliant'
+                               r'|guaranteed free from|truly understands|photographic memory|never (?:lose|miss|forget))\b', re.I),
+    "green_claim": re.compile(r'\b(carbon neutral|recycled|sustainable|carbon footprint|net.zero|greenest|ocean.bound plastic)\b', re.I),
+    "stat_claim": re.compile(r'\d+[%x]\s'
+                             r'|\$[\d,.]+\s+(million|billion|annually|saved)'
+                             r'|\d+\s+(faster|slower|better|improvement|reduction|more productive|hours?\s+per|TOPS)', re.I),
+    "customer_evidence": re.compile(r'(anonymous|name withheld|\[logos?\b)', re.I),
+    "pricing": re.compile(r'\b(lowest price|guaranteed.*price|save \$|limited time|free (?:next|delivery|shipping|trial|upgrade))\b', re.I),
+}
+
+# Lines to skip (boilerplate / document metadata, not marketing claims)
+_MARKETING_SKIP = re.compile(
+    r'(all rights reserved|©|\(c\)\s*\d{4}|disclaimer|footer|={5,}'
+    r'|^asset type:|^target audience:|^region:|^authored by:|^silicon:)',
+    re.I
+)
+
+
+def _scan_marketing_claims(text):
+    """Scan marketing text for claims requiring CELA review.
+
+    Returns list of findings with category, matched text, context, and position.
+    """
+    findings = []
+    for category, pattern in _MARKETING_FLAGS.items():
+        for match in pattern.finditer(text):
+            # Find the line containing this match for context
+            line_start = text.rfind('\n', 0, match.start()) + 1
+            line_end = text.find('\n', match.end())
+            if line_end == -1:
+                line_end = len(text)
+            context_line = text[line_start:line_end].strip()
+            # Skip boilerplate lines (copyright, disclaimers, section dividers)
+            if _MARKETING_SKIP.search(context_line):
+                continue
+            # Skip empty or very short context (section headers like "===")
+            if len(context_line) < 10:
+                continue
+            findings.append({
+                "category": category,
+                "text": match.group(0),
+                "context": context_line,
+                "start": match.start(),
+                "end": match.end(),
+            })
+    findings.sort(key=lambda f: f["start"])
+    return findings
+
+
+_CATEGORY_META = {
+    "superlative": {
+        "risk": "HIGH",
+        "issue": "Superlative ('best', 'only', 'most') requires documented proof. Unsubstantiated superlatives expose Microsoft to FTC enforcement.",
+        "rec": "Add qualifier ('one of the', 'among the') or cite a third-party benchmark as footnote.",
+    },
+    "comparative": {
+        "risk": "HIGH",
+        "issue": "Comparative claim names or implies a competitor. Requires specific, current benchmark data and methodology disclosure.",
+        "rec": "Name the competitor, cite benchmark source and date, or remove the comparison.",
+    },
+    "absolute": {
+        "risk": "HIGH",
+        "issue": "Absolute guarantee ('guaranteed', '100%', 'never') is nearly impossible to substantiate and creates legal liability.",
+        "rec": "Replace with qualified language: 'designed to', 'helps reduce', 'up to X%' with footnote.",
+    },
+    "ai_overclaim": {
+        "risk": "HIGH",
+        "issue": "AI capability claim may violate Microsoft Responsible AI Standard. Autonomous action, bias-free, or perfect accuracy claims require RAI review.",
+        "rec": "Route through RAI Impact Assessment. Use 'helps', 'assists', 'designed to' instead of autonomous language.",
+    },
+    "green_claim": {
+        "risk": "HIGH",
+        "issue": "Environmental claim requires third-party certification per FTC Green Guides. Vague sustainability language is greenwashing risk.",
+        "rec": "Cite certification (e.g., EPEAT Gold, Energy Star) or replace with specific, verified data.",
+    },
+    "stat_claim": {
+        "risk": "HIGH",
+        "issue": "Statistical claim requires source, methodology, sample size, and date. Unattributed statistics are treated as unsubstantiated.",
+        "rec": "Add footnote with source and date. Use 'up to' or 'based on [study]' with link.",
+    },
+    "customer_evidence": {
+        "risk": "MEDIUM",
+        "issue": "Customer reference requires Customer Quote Agreement (CQA) or Executive Customer Advocacy (ECA) approval. Anonymous quotes undermine credibility.",
+        "rec": "Obtain signed CQA. Replace anonymous attributions with named, approved quotes.",
+    },
+    "pricing": {
+        "risk": "MEDIUM",
+        "issue": "Pricing claim must be accurate, time-bounded, and compliant with local advertising laws. 'Lowest price' guarantees may constitute binding offers.",
+        "rec": "Add effective dates, regional qualifiers, and link to terms/conditions.",
+    },
+}
+
+
+def _extract_claim_snippet(finding):
+    """Extract a focused snippet around the matched text, not the full line."""
+    ctx = finding["context"]
+    match_text = finding["text"]
+    if len(ctx) <= 80:
+        return ctx
+    pos = ctx.lower().find(match_text.lower())
+    if pos < 0:
+        return ctx[:80] + "..."
+    # Window of ~30 chars on each side of the match
+    pad = 30
+    start = max(0, pos - pad)
+    end = min(len(ctx), pos + len(match_text) + pad)
+    # Snap to word boundaries
+    if start > 0:
+        sp = ctx.rfind(' ', 0, start + 1)
+        if sp > 0:
+            start = sp + 1
+    if end < len(ctx):
+        sp = ctx.find(' ', end - 1)
+        if sp > 0:
+            end = sp
+    snippet = ctx[start:end].strip()
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(ctx):
+        snippet += "..."
+    return snippet
+
+
+def _build_marketing_claims(scan_findings):
+    """Deduplicate regex findings and enrich with risk levels.
+
+    Groups by context line so the same line isn't shown multiple times.
+    Returns (claims_list, category_counts_dict).
+    """
+    seen_contexts = {}
+    for f in scan_findings:
+        ctx = f["context"]
+        meta = _CATEGORY_META.get(f["category"], {"risk": "MEDIUM", "issue": "Requires review", "rec": "Review and substantiate."})
+        # Keep the highest-risk match per context line
+        if ctx not in seen_contexts or _risk_rank(meta["risk"]) > _risk_rank(seen_contexts[ctx]["risk_level"]):
+            cat_label = f["category"].replace("_", " ").title()
+            seen_contexts[ctx] = {
+                "category": cat_label,
+                "claim_text": _extract_claim_snippet(f),
+                "risk_level": meta["risk"],
+                "issue": meta["issue"],
+                "recommendation": meta.get("rec", f'Review and substantiate or remove: "{f["text"]}"'),
+            }
+
+    claims = list(seen_contexts.values())
+    # Sort: HIGH first, then MEDIUM, then LOW
+    claims.sort(key=lambda c: -_risk_rank(c["risk_level"]))
+
+    # Category counts for the verdict prompt
+    cat_counts = {}
+    for f in scan_findings:
+        cat_label = f["category"].replace("_", " ").title()
+        cat_counts[cat_label] = cat_counts.get(cat_label, 0) + 1
+
+    return claims, cat_counts
+
+
+def _risk_rank(level):
+    return {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(level, 0)
+
+
 def _redact_text(text, pii_findings):
     """Redact PII from text. Returns redacted copy."""
     redacted = text
@@ -6200,6 +7069,7 @@ def router_analyze():
     text = data.get('text', '')
     query = data.get('query', '')
     filename = data.get('filename', '')
+    mode = data.get('mode', 'contract')
     model = DEFAULT_MODEL
 
     def generate():
@@ -6262,7 +7132,163 @@ def router_analyze():
             "total_indexed": len(KNOWLEDGE_INDEX),
         }) + "\n"
 
-        # Step 3: Analysis
+        # --- Marketing mode branch ---
+        # Model-first: regex scan (eyes) → model analysis (brain) → fallback
+        if mode == "marketing" and text:
+            yield json.dumps({"type": "status", "message": "Scanning document for flagged phrases..."}) + "\n"
+
+            # Step 3a: Regex scan — the "eyes" (deterministic, instant)
+            scan_findings = _scan_marketing_claims(text)
+
+            claims = []
+            verdict_data = {}
+            summary_text = ""
+            model_first = False
+
+            if scan_findings:
+                yield json.dumps({"type": "status", "message": f"Found {len(scan_findings)} phrases to review — analyzing with {MODEL_LABEL} on NPU..."}) + "\n"
+
+                # Build flagged items text for model prompt (cap at 12)
+                capped = scan_findings[:12]
+                flagged_lines = []
+                for i, f in enumerate(capped, 1):
+                    snippet = _extract_claim_snippet(f)
+                    flagged_lines.append(f'{i}. [{f["category"]}] "{f["text"]}" — context: "{snippet}"')
+                flagged_items_text = "\n".join(flagged_lines)
+                if len(scan_findings) > 12:
+                    flagged_items_text += f"\n({len(scan_findings)} total phrases found; showing first 12)"
+
+                # Step 3b: Single model call — model assesses claims + verdict
+                analysis_prompt = (
+                    "Review these flagged marketing claims for CELA compliance.\n"
+                    "For each claim, output EXACTLY this format:\n"
+                    "CATEGORY: [category name]\n"
+                    "CLAIM_TEXT: [the flagged text]\n"
+                    "RISK_LEVEL: HIGH or MEDIUM or LOW\n"
+                    "ISSUE: [one sentence — why this is a compliance risk]\n"
+                    "RECOMMENDATION: [one sentence — how to fix it]\n\n"
+                    "HIGH = unsubstantiated stats, comparative, superlative, AI overclaim, green claim\n"
+                    "MEDIUM = needs documentation or verification\n"
+                    "LOW = minor style concern\n\n"
+                    "Example:\n"
+                    "CATEGORY: Superlative\n"
+                    "CLAIM_TEXT: the world's best laptop\n"
+                    "RISK_LEVEL: HIGH\n"
+                    "ISSUE: Unsubstantiated superlative requires third-party benchmark proof.\n"
+                    "RECOMMENDATION: Replace with 'one of the leading' or cite a benchmark.\n\n"
+                    f"FLAGGED CLAIMS:\n{flagged_items_text}\n\n"
+                    "After all claims, output:\n"
+                    "VERDICT: SELF-SERVICE OK or CELA INTAKE REQUIRED\n"
+                    "VERDICT_REASON: [one sentence]\n"
+                    "SUMMARY: [2-sentence compliance assessment]"
+                )
+
+                try:
+                    _call_start = _time.time()
+                    _max_tokens = 1200 if SILICON == "qualcomm" else 800
+                    response = foundry_chat(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": "You are a marketing compliance reviewer running locally on an NPU. Be specific and concise."},
+                            {"role": "user", "content": analysis_prompt},
+                        ],
+                        max_tokens=_max_tokens,
+                        temperature=0.3,
+                    )
+                    _track_model_call(response, _time.time() - _call_start)
+                    ai_response = (response.choices[0].message.content or "").strip()
+
+                    # Parse structured claims + verdict from model response
+                    claims, verdict_data = _parse_marketing_response(ai_response)
+
+                    # Extract SUMMARY (not covered by _parse_marketing_response)
+                    for line in ai_response.split('\n'):
+                        if line.strip().upper().startswith('SUMMARY:'):
+                            summary_text = line.strip().split(':', 1)[1].strip()
+                            break
+
+                    if len(claims) >= 2:
+                        model_first = True
+                        print(f"[MARKETING] Model-first: {len(claims)} claims parsed")
+                    else:
+                        print(f"[MARKETING] Fallback: model returned {len(claims)} claims, using regex+metadata")
+
+                except Exception as e:
+                    print(f"[MARKETING] Model call failed: {e}, using regex+metadata fallback")
+            else:
+                yield json.dumps({"type": "status", "message": "No flagged phrases found"}) + "\n"
+
+            # Fallback: if model didn't produce enough claims, use regex+metadata
+            if not model_first:
+                claims, _fb_cats = _build_marketing_claims(scan_findings)
+
+            yield json.dumps({"type": "status", "message": "Compliance analysis complete"}) + "\n"
+
+            # Emit claims
+            yield json.dumps({"type": "claims", "findings": claims}) + "\n"
+
+            # Compute counts from actual claim data
+            high_count = sum(1 for c in claims if c.get("risk_level", "").upper() == "HIGH")
+            medium_count = sum(1 for c in claims if c.get("risk_level", "").upper() == "MEDIUM")
+            low_count = sum(1 for c in claims if c.get("risk_level", "").upper() == "LOW")
+
+            # Rule-based safety net for verdict
+            if not verdict_data.get('verdict'):
+                if high_count >= 1:
+                    verdict_data['verdict'] = "CELA INTAKE REQUIRED"
+                    verdict_data['verdict_reason'] = (
+                        f"Asset contains {high_count} high-risk claim(s) requiring substantiation review")
+                else:
+                    verdict_data['verdict'] = "SELF-SERVICE OK"
+                    verdict_data['verdict_reason'] = (
+                        "No high-risk claims detected. Minor items flagged for verification.")
+
+            # Populate verdict metadata from actual claim data
+            trigger_cats = list(set(
+                c["category"] for c in claims if c.get("risk_level", "").upper() == "HIGH"
+            ))
+            verdict_data['trigger_categories'] = ", ".join(trigger_cats) if trigger_cats else "None"
+            verdict_data['total_findings'] = str(len(claims))
+            verdict_data['high_risk_count'] = str(high_count)
+            verdict_data['medium_risk_count'] = str(medium_count)
+            verdict_data['low_risk_count'] = str(low_count)
+
+            yield json.dumps({"type": "verdict", **verdict_data}) + "\n"
+
+            if not summary_text:
+                summary_text = verdict_data.get('verdict_reason', 'Marketing compliance review complete.')
+            yield json.dumps({"type": "summary", "text": summary_text}) + "\n"
+
+            analysis_time = round(_time.time() - start, 1)
+
+            # Escalation if CELA intake required
+            if "CELA" in verdict_data.get("verdict", "").upper():
+                redacted_text = _redact_text(text, pii_findings_raw)
+                redacted_tokens = len(redacted_text.split()) * 1.3
+                estimated_input_tokens = int(redacted_tokens + 200)
+                estimated_output_tokens = 400
+                estimated_cost = (estimated_input_tokens * 2.50 / 1e6 + estimated_output_tokens * 10.00 / 1e6) * 1.5
+                yield json.dumps({
+                    "type": "escalation_available",
+                    "pii_found": len(pii_findings_raw),
+                    "pii_details": pii_findings_raw,
+                    "original_preview": text[:800],
+                    "redacted_preview": redacted_text[:800],
+                    "estimated_tokens": estimated_input_tokens + estimated_output_tokens,
+                    "estimated_cost": round(estimated_cost, 4),
+                }) + "\n"
+
+            yield json.dumps({
+                "type": "audit",
+                "total_time": round(_time.time() - start, 1),
+                "pii_time": pii_time,
+                "analysis_time": analysis_time,
+                "mode": "marketing",
+            }) + "\n"
+            yield json.dumps({"type": "complete", "total_time": round(_time.time() - start, 1)}) + "\n"
+            return
+
+        # Step 3: Contract Analysis (default mode)
         yield json.dumps({"type": "status", "message": f"Analyzing with {MODEL_LABEL} on NPU..."}) + "\n"
 
         if text:

@@ -12,7 +12,7 @@ This is a single-file Flask demo app (`npu_demo_flask.py`) showcasing on-device 
 
 | File | Purpose |
 |------|---------|
-| `npu_demo_flask.py` | Main Flask app (~2,700 lines, single file with HTML/CSS/JS inline) |
+| `npu_demo_flask.py` | Main Flask app (~8,100 lines, single file with HTML/CSS/JS inline) |
 | `docs/TECHNICAL_GUIDE.md` | Detailed technical documentation |
 | `README.md` | Project overview and setup instructions |
 | `docs/specs/` | Feature specifications (Auditor tab, My Day, Save Summary) |
@@ -70,7 +70,9 @@ Governed tool execution (read, write, exec) with approval gates and audit trail.
 Executive morning briefing from calendar, email, and task data. Cross-references data sources for actionable insights.
 
 ### Tab 3: Auditor
-Clean room audit analysis.
+Dual-mode clean room analysis with mode selector:
+- **Contract / Legal Review** — Structured risk analysis of contracts and NDAs with smart escalation to frontier model.
+- **Marketing / Campaign Review** — CELA compliance check for marketing assets. Model-first architecture: regex scan finds flagged phrases ("eyes"), then the local AI assesses risk levels, explains issues, and recommends fixes ("brain"). Falls back to regex+metadata if model output doesn't parse. Emits claims card, verdict (SELF-SERVICE OK / CELA INTAKE REQUIRED), and escalation consent flow.
 
 ### Tab 4: ID Verification
 On-device OCR (Tesseract.js) + AI analysis for document verification.
@@ -113,6 +115,7 @@ Phi Silica has ~4K context window:
 - Brief Me: ~1,084 input + 800 output = ~1,884 total
 - Agent chat: ~1,824 max tokens
 - Compression hard cap: 3,600 chars for data payloads
+- Marketing CELA review: ~360 input + 800 output = ~1,160 total (Intel); ~360 input + 1,200 output on Qualcomm
 
 ## Performance
 
@@ -121,6 +124,7 @@ Phi Silica has ~4K context window:
 | Brief Me | 40-50s |
 | Agent chat (simple) | 5-10s |
 | Agent chat (tool + summary) | 15-25s |
+| Marketing CELA review | 10-20s |
 | OCR | 3-8s |
 
 Power draw: ~5W sustained on NPU (~0.06 Wh per briefing)

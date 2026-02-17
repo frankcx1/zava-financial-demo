@@ -17,7 +17,7 @@ App-shell layout with a Claude/ChatGPT-style collapsible sidebar for tab navigat
 |-----|-------------|
 | **AI Agent** *(default)* | Governed tool execution (read, write, exec) with approval gates, audit trail, and suggestion chips |
 | **My Day** | Executive morning briefing from calendar, email, and task data with cross-referenced insights |
-| **Clean Room Auditor** | NDA/contract analysis with structured legal risk assessment |
+| **Clean Room Auditor** | Dual-mode: contract/NDA risk analysis + marketing CELA compliance review with AI-driven claims assessment |
 | **ID Verification** | Camera capture + OCR + AI parsing of driver licenses — fully offline |
 
 ### AI Agent Capabilities
@@ -104,7 +104,7 @@ On first run, Foundry Local will download the Phi-4 Mini model (~2 GB). Subseque
 
 | File | Description |
 |------|-------------|
-| `npu_demo_flask.py` | Main demo application (~5,900 lines, single file with HTML/CSS/JS inline) |
+| `npu_demo_flask.py` | Main demo application (~8,100 lines, single file with HTML/CSS/JS inline) |
 | `run.bat` | One-click launcher — installs deps and copies demo data if needed |
 | `setup.ps1` | First-time setup script (run as Administrator) |
 | `requirements.txt` | Python dependencies |
@@ -145,8 +145,9 @@ The `demo_data/` folder ships with the repo and is read directly by the app — 
 
 ### Clean Room Auditor
 1. Navigate to **Auditor** in the sidebar
-2. Go offline (toggle in sidebar footer) for clean room compliance
-3. Upload or load a demo document for legal risk analysis
+2. Choose **Contract / Legal Review** or **Marketing / Campaign Review**
+3. Go offline (toggle in sidebar footer) for clean room compliance
+4. Upload or load a demo document — contract mode does structured risk analysis; marketing mode scans for flagged claims, then the local AI assesses risk levels and produces a CELA verdict
 
 ### ID Verification — Offline OCR
 1. Navigate to **ID Verification** in the sidebar

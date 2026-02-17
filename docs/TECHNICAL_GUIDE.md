@@ -6,7 +6,7 @@ A single-file Flask application (`npu_demo_flask.py`) that demonstrates three AI
 
 **Architecture:** Python Flask backend (localhost:5000) → Foundry Local runtime (localhost:5272) → Phi Silica 3.8B on NPU
 
-**File:** `C:\Users\frankbu\OneDrive - Microsoft\NPU\npu_demo_flask.py` (~2,676 lines, single file)
+**File:** `npu_demo_flask.py` (~8,100 lines, single file with HTML/CSS/JS inline)
 
 ---
 

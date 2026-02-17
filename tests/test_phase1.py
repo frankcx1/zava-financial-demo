@@ -1214,6 +1214,375 @@ class TestRouterDecideWithStaleContext(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+class TestMarketingModeUI(unittest.TestCase):
+    """Test that marketing mode HTML elements exist."""
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def _get_html(self):
+        resp = self.client.get("/")
+        return resp.data.decode()
+
+    def test_marketing_mode_selector(self):
+        html = self._get_html()
+        self.assertIn('id="auditorModeSelector"', html)
+
+    def test_marketing_input_zone(self):
+        html = self._get_html()
+        self.assertIn('id="marketingInputZone"', html)
+
+    def test_marketing_demo_buttons(self):
+        html = self._get_html()
+        self.assertIn('id="marketingDemoCleanBtn"', html)
+        self.assertIn('id="marketingDemoRiskyBtn"', html)
+
+    def test_mode_cards(self):
+        html = self._get_html()
+        self.assertIn('id="modeCardContract"', html)
+        self.assertIn('id="modeCardMarketing"', html)
+
+    def test_marketing_css_classes(self):
+        html = self._get_html()
+        self.assertIn('.mode-card', html)
+        self.assertIn('.claim-item', html)
+        self.assertIn('.verdict-card', html)
+
+    def test_render_functions_exist(self):
+        html = self._get_html()
+        self.assertIn('renderClaimsCard', html)
+        self.assertIn('renderVerdictCard', html)
+
+
+class TestMarketingDemoDocEndpoints(unittest.TestCase):
+    """Test marketing demo document endpoints."""
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def test_marketing_demo_doc_endpoint(self):
+        resp = self.client.get("/auditor-marketing-demo-doc")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(data["filename"], "marketing_surface_campaign_clean.txt")
+        self.assertIn("text", data)
+        self.assertIn("word_count", data)
+        self.assertGreater(data["word_count"], 50)
+        self.assertIn("Surface Copilot+ PC", data["text"])
+
+    def test_marketing_escalation_demo_doc_endpoint(self):
+        resp = self.client.get("/auditor-marketing-escalation-demo-doc")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertEqual(data["filename"], "marketing_surface_campaign_risky.txt")
+        self.assertIn("text", data)
+        self.assertIn("word_count", data)
+        self.assertGreater(data["word_count"], 50)
+        self.assertIn("Most Intelligent PC Ever Made", data["text"])
+
+
+class TestScanMarketingClaims(unittest.TestCase):
+    """Test _scan_marketing_claims() regex scanner."""
+
+    def test_finds_superlatives(self):
+        text = "This is the best and most powerful device ever."
+        findings = app_module._scan_marketing_claims(text)
+        cats = [f["category"] for f in findings]
+        self.assertIn("superlative", cats)
+
+    def test_finds_comparatives(self):
+        text = "Our device is faster than the competition and outperforms others."
+        findings = app_module._scan_marketing_claims(text)
+        cats = [f["category"] for f in findings]
+        self.assertIn("comparative", cats)
+
+    def test_finds_stat_claims(self):
+        text = "Users are 40% more productive and save $2.3 million annually."
+        findings = app_module._scan_marketing_claims(text)
+        cats = [f["category"] for f in findings]
+        self.assertIn("stat_claim", cats)
+
+    def test_finds_ai_overclaims(self):
+        text = "Our system is guaranteed free from bias and always accurate."
+        findings = app_module._scan_marketing_claims(text)
+        cats = [f["category"] for f in findings]
+        self.assertIn("ai_overclaim", cats)
+
+    def test_finds_green_claims(self):
+        text = "This product is carbon neutral and uses recycled materials."
+        findings = app_module._scan_marketing_claims(text)
+        cats = [f["category"] for f in findings]
+        self.assertIn("green_claim", cats)
+
+    def test_findings_have_context(self):
+        text = "Line one.\nOur product is the best in class.\nLine three."
+        findings = app_module._scan_marketing_claims(text)
+        self.assertTrue(len(findings) > 0)
+        self.assertIn("context", findings[0])
+        self.assertIn("best", findings[0]["context"])
+
+    def test_empty_text(self):
+        findings = app_module._scan_marketing_claims("")
+        self.assertEqual(findings, [])
+
+    def test_clean_doc_has_few_flags(self):
+        findings = app_module._scan_marketing_claims(app_module.MARKETING_CLEAN_DOC)
+        # Clean doc should have very few or zero flags (properly written)
+        self.assertLess(len(findings), 5)
+
+    def test_risky_doc_has_many_flags(self):
+        findings = app_module._scan_marketing_claims(app_module.MARKETING_RISKY_DOC)
+        # Risky doc should have many more flags
+        self.assertGreater(len(findings), 10)
+
+    def test_build_marketing_claims_deduplicates(self):
+        """_build_marketing_claims deduplicates by context line."""
+        scan = app_module._scan_marketing_claims(app_module.MARKETING_RISKY_DOC)
+        claims, cats = app_module._build_marketing_claims(scan)
+        # Deduplicated claims should be fewer than raw scan findings
+        self.assertLess(len(claims), len(scan))
+        # Should have category counts
+        self.assertGreater(len(cats), 0)
+        # Each claim should have required fields
+        for c in claims:
+            self.assertIn("category", c)
+            self.assertIn("claim_text", c)
+            self.assertIn("risk_level", c)
+            self.assertIn("issue", c)
+
+    def test_clean_doc_no_high_risk_claims(self):
+        """Clean doc should have no HIGH risk claims after deduplication."""
+        scan = app_module._scan_marketing_claims(app_module.MARKETING_CLEAN_DOC)
+        claims, _ = app_module._build_marketing_claims(scan)
+        high = [c for c in claims if c["risk_level"] == "HIGH"]
+        self.assertEqual(len(high), 0)
+
+
+class TestParseMarketingResponse(unittest.TestCase):
+    """Test _parse_marketing_response() parser."""
+
+    def test_basic_parsing(self):
+        sample = (
+            "CATEGORY: Superlative\n"
+            "CLAIM_TEXT: The Most Intelligent PC\n"
+            "RISK_LEVEL: HIGH\n"
+            "ISSUE: Unsubstantiated superlative\n"
+            "SUBSTANTIATION: Benchmark data required\n"
+            "RECOMMENDATION: Remove superlative\n"
+            "\n"
+            "CATEGORY: Pricing\n"
+            "CLAIM_TEXT: Guaranteed lowest price\n"
+            "RISK_LEVEL: HIGH\n"
+            "ISSUE: Absolute pricing claim\n"
+            "SUBSTANTIATION: Price monitoring required\n"
+            "RECOMMENDATION: Remove guarantee\n"
+            "\n"
+            "VERDICT: CELA INTAKE REQUIRED\n"
+            "VERDICT_REASON: Multiple high-risk findings\n"
+            "TRIGGER_CATEGORIES: Superlative, Pricing\n"
+            "TOTAL_FINDINGS: 2\n"
+            "HIGH_RISK_COUNT: 2\n"
+            "MEDIUM_RISK_COUNT: 0\n"
+            "LOW_RISK_COUNT: 0\n"
+        )
+        claims, verdict = app_module._parse_marketing_response(sample)
+        self.assertEqual(len(claims), 2)
+        self.assertEqual(claims[0]["category"], "Superlative")
+        self.assertEqual(claims[0]["risk_level"], "HIGH")
+        self.assertEqual(claims[1]["claim_text"], "Guaranteed lowest price")
+        self.assertEqual(verdict["verdict"], "CELA INTAKE REQUIRED")
+        self.assertEqual(verdict["total_findings"], "2")
+        self.assertEqual(verdict["high_risk_count"], "2")
+
+    def test_empty_input(self):
+        claims, verdict = app_module._parse_marketing_response("")
+        self.assertEqual(claims, [])
+        self.assertEqual(verdict, {})
+
+
+class TestRouterAnalyzeMarketingMode(unittest.TestCase):
+    """Test /router/analyze with marketing mode."""
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def test_marketing_clean_demo_doc(self):
+        """POST with clean marketing demo doc should return claims + verdict events."""
+        # Clean doc has 0 claims after tightened regex, so no model call needed
+        resp = self.client.post("/router/analyze", json={
+            "text": app_module.MARKETING_CLEAN_DOC,
+            "filename": "marketing_surface_campaign_clean.txt",
+            "mode": "marketing",
+        })
+        self.assertEqual(resp.status_code, 200)
+        lines = [l for l in resp.data.decode().strip().split("\n") if l.strip()]
+        events = [json.loads(l) for l in lines]
+        event_types = [e["type"] for e in events]
+        self.assertIn("claims", event_types)
+        self.assertIn("verdict", event_types)
+        self.assertIn("audit", event_types)
+        self.assertIn("complete", event_types)
+        # Check verdict is SELF-SERVICE OK
+        verdict_evt = [e for e in events if e["type"] == "verdict"][0]
+        self.assertIn("SELF-SERVICE", verdict_evt["verdict"])
+        # Clean doc should have zero or very few findings, all non-HIGH
+        claims_evt = [e for e in events if e["type"] == "claims"][0]
+        high_claims = [c for c in claims_evt["findings"] if c["risk_level"] == "HIGH"]
+        self.assertEqual(len(high_claims), 0)
+
+    def test_marketing_risky_demo_doc(self):
+        """POST with risky marketing demo doc should return claims + verdict + escalation.
+
+        Mock returns only verdict text (no CATEGORY blocks), so the model-first
+        parser yields < 2 claims and the fallback regex+metadata path kicks in.
+        """
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "VERDICT: CELA INTAKE REQUIRED\n"
+            "VERDICT_REASON: Asset contains multiple high-risk claims requiring review.\n"
+            "SUMMARY: High-risk marketing asset with mandatory CELA intake triggers."
+        )
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 30
+
+        # Mock at client.chat.completions.create level because Flask 3.x
+        # streaming responses may consume the generator lazily.
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_response
+        try:
+            resp = self.client.post("/router/analyze", json={
+                "text": app_module.MARKETING_RISKY_DOC,
+                "filename": "marketing_surface_campaign_risky.txt",
+                "mode": "marketing",
+            })
+            raw_data = resp.get_data(as_text=True)
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
+        self.assertEqual(resp.status_code, 200)
+        lines = [l for l in raw_data.strip().split("\n") if l.strip()]
+        events = [json.loads(l) for l in lines]
+        event_types = [e["type"] for e in events]
+        self.assertIn("claims", event_types)
+        self.assertIn("verdict", event_types)
+        self.assertIn("escalation_available", event_types)
+        # Check verdict is CELA INTAKE REQUIRED
+        verdict_evt = [e for e in events if e["type"] == "verdict"][0]
+        self.assertIn("CELA INTAKE", verdict_evt["verdict"])
+        # Check many findings (fallback from regex+metadata)
+        claims_evt = [e for e in events if e["type"] == "claims"][0]
+        self.assertGreaterEqual(len(claims_evt["findings"]), 20)
+        # Verify claims have model-style fields
+        for claim in claims_evt["findings"]:
+            self.assertIn("category", claim)
+            self.assertIn("claim_text", claim)
+            self.assertIn("risk_level", claim)
+            self.assertIn("issue", claim)
+            self.assertIn("recommendation", claim)
+
+    def test_marketing_model_first_status_messages(self):
+        """Model-first path: verify 'analyzing with' status and model-parsed claims."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "CATEGORY: Superlative\n"
+            "CLAIM_TEXT: Most Intelligent PC Ever Made\n"
+            "RISK_LEVEL: HIGH\n"
+            "ISSUE: Unsubstantiated superlative requiring benchmark proof\n"
+            "RECOMMENDATION: Add qualifier or cite third-party benchmark\n"
+            "\n"
+            "CATEGORY: Stat Claim\n"
+            "CLAIM_TEXT: 40% more productive\n"
+            "RISK_LEVEL: HIGH\n"
+            "ISSUE: Statistical claim without source or methodology\n"
+            "RECOMMENDATION: Add footnote with source and date\n"
+            "\n"
+            "CATEGORY: AI Overclaim\n"
+            "CLAIM_TEXT: truly understands\n"
+            "RISK_LEVEL: HIGH\n"
+            "ISSUE: AI capability overclaim violates Responsible AI Standard\n"
+            "RECOMMENDATION: Use assisted language like helps or assists\n"
+            "\n"
+            "VERDICT: CELA INTAKE REQUIRED\n"
+            "VERDICT_REASON: Asset contains 3 high-risk claims requiring substantiation\n"
+            "SUMMARY: This marketing asset has multiple unsubstantiated claims. CELA intake is required."
+        )
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 300
+        mock_response.usage.completion_tokens = 150
+
+        # Mock at client.chat.completions.create level because Flask 3.x
+        # streaming responses may consume the generator lazily.
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_response
+        try:
+            resp = self.client.post("/router/analyze", json={
+                "text": app_module.MARKETING_RISKY_DOC,
+                "filename": "marketing_surface_campaign_risky.txt",
+                "mode": "marketing",
+            })
+            # Force consumption while mock is active
+            raw_data = resp.get_data(as_text=True)
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
+        self.assertEqual(resp.status_code, 200)
+        lines = [l for l in raw_data.strip().split("\n") if l.strip()]
+        events = [json.loads(l) for l in lines]
+        event_types = [e["type"] for e in events]
+
+        # Verify "analyzing with" status message appears in stream
+        status_msgs = [e["message"] for e in events if e["type"] == "status"]
+        analyzing_msgs = [m for m in status_msgs if "analyzing with" in m.lower()]
+        self.assertGreaterEqual(len(analyzing_msgs), 1,
+                                "Expected 'analyzing with' status message for model-first path")
+
+        # Verify model-parsed claims (3 from mock, model-first path succeeds)
+        claims_evt = [e for e in events if e["type"] == "claims"][0]
+        self.assertEqual(len(claims_evt["findings"]), 3)
+        self.assertEqual(claims_evt["findings"][0]["category"], "Superlative")
+        self.assertEqual(claims_evt["findings"][0]["risk_level"], "HIGH")
+
+        # Verify verdict and summary from model
+        verdict_evt = [e for e in events if e["type"] == "verdict"][0]
+        self.assertIn("CELA INTAKE", verdict_evt["verdict"])
+        summary_evts = [e for e in events if e["type"] == "summary"]
+        self.assertEqual(len(summary_evts), 1)
+        self.assertIn("unsubstantiated", summary_evts[0]["text"].lower())
+
+    def test_contract_mode_unchanged(self):
+        """POST with contract mode should still emit risk/obligations/decision_card."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "SEVERITY: HIGH\nSECTION: 4.2\nTYPE: Indemnification\n"
+            "FINDING: Unlimited liability\nRECOMMENDATION: Add cap\n"
+            "CONFIDENCE: HIGH\nREASONING: Standard analysis\n"
+            "FRONTIER_BENEFIT: None\nSUMMARY: Test summary"
+        )
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 50
+
+        with patch.object(app_module, 'foundry_chat', return_value=mock_response):
+            resp = self.client.post("/router/analyze", json={
+                "text": "This is a test contract.",
+                "filename": "test.txt",
+                "mode": "contract",
+            })
+        self.assertEqual(resp.status_code, 200)
+        lines = [l for l in resp.data.decode().strip().split("\n") if l.strip()]
+        events = [json.loads(l) for l in lines]
+        event_types = [e["type"] for e in events]
+        self.assertIn("risk", event_types)
+        self.assertIn("decision_card", event_types)
+        # Should NOT have marketing events
+        self.assertNotIn("claims", event_types)
+        self.assertNotIn("verdict", event_types)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)
