@@ -72,7 +72,7 @@ Executive morning briefing from calendar, email, and task data. Cross-references
 ### Tab 3: Auditor
 Dual-mode clean room analysis with mode selector:
 - **Contract / Legal Review** — Structured risk analysis of contracts and NDAs with smart escalation to frontier model.
-- **Marketing / Campaign Review** — CELA compliance check for marketing assets. Model-first architecture: regex scan finds flagged phrases ("eyes"), then the local AI assesses risk levels, explains issues, and recommends fixes ("brain"). Falls back to regex+metadata if model output doesn't parse. Emits claims card, verdict (SELF-SERVICE OK / CELA INTAKE REQUIRED), and escalation consent flow.
+- **Marketing / Campaign Review** — CELA compliance check for marketing assets. Document-first architecture (mirrors contract flow): sends actual document text to the model, which reads it and identifies compliance claims itself. Falls back to hardcoded findings for demo docs or regex+metadata for uploaded docs if model output doesn't parse (< 2 claims). Progressive reveal: claims card → verdict → summary → escalation cascade with status messages and pauses. Emits claims card, verdict (SELF-SERVICE OK / CELA INTAKE REQUIRED), and escalation consent flow.
 
 ### Tab 4: ID Verification
 On-device OCR (Tesseract.js) + AI analysis for document verification.
@@ -84,6 +84,7 @@ On-device OCR (Tesseract.js) + AI analysis for document verification.
 3. **Network Binding:** Flask bound to `127.0.0.1` only
 4. **Path Traversal Prevention:** Static file routes reject `..` and validate realpath
 5. **Upload Restrictions:** Extension allowlist, secure_filename(), 16MB limit
+6. **PII Scanner:** `_scan_pii()` detects SSNs, emails, phone numbers, and person names (curated list via `_DEMO_PERSON_NAMES` regex). Runs on both marketing and contract flows. `_redact_text()` replaces findings with `[REDACTED Type]` before any escalation to frontier models.
 
 ## Demo Data Location
 
@@ -109,13 +110,16 @@ Apply `mdToHtml()` function to all code paths rendering model output.
 ### Model Hallucinating File Paths
 Use dedicated endpoints that control file paths directly instead of letting the model choose paths.
 
+### Flask Serving Stale Code After Edits
+Delete `__pycache__/npu_demo_flask.cpython-*.pyc` and restart. Flask debug mode's auto-reloader doesn't always pick up changes reliably.
+
 ## Token Budget
 
 Phi Silica has ~4K context window:
 - Brief Me: ~1,084 input + 800 output = ~1,884 total
 - Agent chat: ~1,824 max tokens
 - Compression hard cap: 3,600 chars for data payloads
-- Marketing CELA review: ~360 input + 800 output = ~1,160 total (Intel); ~360 input + 1,200 output on Qualcomm
+- Marketing CELA review: ~500 input + 800 output = ~1,300 total (Intel); ~1,650 input + 1,200 output = ~2,850 total on Qualcomm
 
 ## Performance
 
@@ -124,7 +128,7 @@ Phi Silica has ~4K context window:
 | Brief Me | 40-50s |
 | Agent chat (simple) | 5-10s |
 | Agent chat (tool + summary) | 15-25s |
-| Marketing CELA review | 10-20s |
+| Marketing CELA review | 15-35s |
 | OCR | 3-8s |
 
 Power draw: ~5W sustained on NPU (~0.06 Wh per briefing)
