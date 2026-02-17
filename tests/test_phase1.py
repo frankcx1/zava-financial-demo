@@ -1407,15 +1407,36 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         self.client = app.test_client()
 
     def test_marketing_clean_demo_doc(self):
-        """POST with clean marketing demo doc should return claims + verdict events."""
-        # Clean doc has 0 claims after tightened regex, so no model call needed
-        resp = self.client.post("/router/analyze", json={
-            "text": app_module.MARKETING_CLEAN_DOC,
-            "filename": "marketing_surface_campaign_clean.txt",
-            "mode": "marketing",
-        })
+        """POST with clean marketing demo doc should return claims + verdict events.
+
+        Document-first: model call always happens. Mock returns unparseable
+        output so fallback uses _MARKETING_CLEAN_FINDINGS (3 LOW items).
+        """
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            "VERDICT: SELF-SERVICE OK\n"
+            "VERDICT_REASON: No high-risk claims.\n"
+            "SUMMARY: Clean marketing asset with minor items."
+        )
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 100
+        mock_response.usage.completion_tokens = 30
+
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_response
+        try:
+            resp = self.client.post("/router/analyze", json={
+                "text": app_module.MARKETING_CLEAN_DOC,
+                "filename": "marketing_surface_campaign_clean.txt",
+                "mode": "marketing",
+            })
+            raw_data = resp.get_data(as_text=True)
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
         self.assertEqual(resp.status_code, 200)
-        lines = [l for l in resp.data.decode().strip().split("\n") if l.strip()]
+        lines = [l for l in raw_data.strip().split("\n") if l.strip()]
         events = [json.loads(l) for l in lines]
         event_types = [e["type"] for e in events]
         self.assertIn("claims", event_types)
@@ -1425,8 +1446,9 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         # Check verdict is SELF-SERVICE OK
         verdict_evt = [e for e in events if e["type"] == "verdict"][0]
         self.assertIn("SELF-SERVICE", verdict_evt["verdict"])
-        # Clean doc should have zero or very few findings, all non-HIGH
+        # Clean doc fallback should have 3 findings, all non-HIGH
         claims_evt = [e for e in events if e["type"] == "claims"][0]
+        self.assertEqual(len(claims_evt["findings"]), len(app_module._MARKETING_CLEAN_FINDINGS))
         high_claims = [c for c in claims_evt["findings"] if c["risk_level"] == "HIGH"]
         self.assertEqual(len(high_claims), 0)
 
@@ -1434,7 +1456,7 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         """POST with risky marketing demo doc should return claims + verdict + escalation.
 
         Mock returns only verdict text (no CATEGORY blocks), so the model-first
-        parser yields < 2 claims and the fallback regex+metadata path kicks in.
+        parser yields < 2 claims and the fallback uses _MARKETING_RISKY_FINDINGS.
         """
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -1471,9 +1493,9 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         # Check verdict is CELA INTAKE REQUIRED
         verdict_evt = [e for e in events if e["type"] == "verdict"][0]
         self.assertIn("CELA INTAKE", verdict_evt["verdict"])
-        # Check many findings (fallback from regex+metadata)
+        # Fallback uses hardcoded _MARKETING_RISKY_FINDINGS (16 items)
         claims_evt = [e for e in events if e["type"] == "claims"][0]
-        self.assertGreaterEqual(len(claims_evt["findings"]), 20)
+        self.assertEqual(len(claims_evt["findings"]), len(app_module._MARKETING_RISKY_FINDINGS))
         # Verify claims have model-style fields
         for claim in claims_evt["findings"]:
             self.assertIn("category", claim)
@@ -1533,11 +1555,11 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         events = [json.loads(l) for l in lines]
         event_types = [e["type"] for e in events]
 
-        # Verify "analyzing with" status message appears in stream
+        # Verify "Analyzing marketing document with" status message appears in stream
         status_msgs = [e["message"] for e in events if e["type"] == "status"]
-        analyzing_msgs = [m for m in status_msgs if "analyzing with" in m.lower()]
+        analyzing_msgs = [m for m in status_msgs if "Analyzing marketing document with" in m]
         self.assertGreaterEqual(len(analyzing_msgs), 1,
-                                "Expected 'analyzing with' status message for model-first path")
+                                "Expected 'Analyzing marketing document with' status message")
 
         # Verify model-parsed claims (3 from mock, model-first path succeeds)
         claims_evt = [e for e in events if e["type"] == "claims"][0]
