@@ -12,12 +12,15 @@ This is a single-file Flask demo app (`npu_demo_flask.py`) showcasing on-device 
 
 | File | Purpose |
 |------|---------|
-| `npu_demo_flask.py` | Main Flask app (~8,100 lines, single file with HTML/CSS/JS inline) |
+| `npu_demo_flask.py` | Main Flask app (~9,200 lines, single file with HTML/CSS/JS inline) |
 | `docs/TECHNICAL_GUIDE.md` | Detailed technical documentation |
 | `README.md` | Project overview and setup instructions |
 | `docs/specs/` | Feature specifications (Auditor tab, My Day, Save Summary) |
 | `docs/moltbot-shim/` | OpenClaw/MoltBot tool-calling shim project (separate from Flask app) |
 | `docs/marketing/` | Social posts, exec summaries, demo scripts |
+| `Field_Inspection_Copilot_Build_Spec.md` | Build spec for Tab 5 (7 milestones, MWC target) |
+| `vision-service/` | C# Phi Silica Vision microservice (localhost:5100) |
+| `tests/test_phase1.py` | Test suite (279 tests covering all features) |
 
 ## Running the App
 
@@ -61,7 +64,7 @@ var pendingSummarize = false;
 var lastAssistantResponse = "";
 ```
 
-## Four Tabs (sidebar navigation)
+## Five Tabs (sidebar navigation)
 
 ### Tab 1: AI Agent (default)
 Governed tool execution (read, write, exec) with approval gates and audit trail. Demonstrates "AI with hands, but on a leash."
@@ -76,6 +79,34 @@ Dual-mode clean room analysis with mode selector:
 
 ### Tab 4: ID Verification
 On-device OCR (Tesseract.js) + AI analysis for document verification.
+
+### Tab 5: Field Inspection
+On-site assessment copilot for MWC Barcelona demo (March 2-5, 2026). Seven-milestone build per `Field_Inspection_Copilot_Build_Spec.md`.
+
+**Architecture:** Four-panel workspace (form, photo, report, bottom bar) with milestone-scoped JS IIFEs.
+
+**Milestones (completed):**
+- **M1 — Scaffold:** Nav item, tab button, four-panel grid layout, CSS, tab switching
+- **M2 — Voice Capture + Field Extraction:** Web Speech API mic button, scripted input fallback ("Inspector Sarah Chen at Building C..."), `POST /inspection/transcribe` sends transcript to Phi-4 Mini for JSON field extraction (location, datetime, issue, source), staggered field animation
+- **M3 — Camera Capture + Classification:** getUserMedia camera, demo photo button cycling 5 presets (water_damage 82%, structural_crack 72%, mold 88%, electrical_hazard 91%, trip_hazard 85%), `POST /inspection/classify` with three-tier path (demo presets → Phi Silica Vision via localhost:5100 → Phi-4 Mini text fallback), classification card with confidence thresholds (green ≥75, amber 60-74, red <60), findings log, photo grid with severity badges
+- **M4 — Pen Annotation:** Deferred pending LAF token for handwriting extraction
+- **M5 — Report Generation:** `POST /inspection/report` sends fields + findings to Phi-4 Mini, generates professional HTML report with summary/risk rating/next steps, hardcoded fallback on error, report draft panel, "Regenerate Report" button
+- **M6 — Translation:** `POST /inspection/translate` sends report HTML for Spanish translation, language toggle (EN/ES), 500ms side-by-side flash before settling, "no cloud API call" status
+- **M7 — Router Escalation + Dashboard Tally:** Escalation dialog triggers on 60-74% confidence findings (structural_crack at 72% demos this), two options: "Escalate to Cloud" (shows payload preview, graceful offline failure) and "Keep Local" (lock animation, flags for expert review). Dashboard tally overlay: 6 local AI tasks with checkmarks vs 0 cloud tasks, cumulative tokenomics.
+
+**Key JS patterns:**
+- Each milestone is a self-contained IIFE: `// ── Field Inspection: Milestone N — ... ──`
+- Cross-milestone communication via `window._inspFindings`, `window._inspReportData`, `window._inspCompletedTasks`, `window._inspCheckEscalation`, `window._inspShowDashboard`
+- Status bar shared: `inspStatusDot`, `inspStatusText`, `inspTokenCount`
+
+**Vision Service** (`vision-service/`):
+- C# ASP.NET Core on localhost:5100, wraps Phi Silica `ImageDescriptionGenerator` (Windows App SDK 1.7 experimental3)
+- Endpoints: `/health`, `/describe`, `/classify`, `/extract-text`
+- `ImageDescriptionGenerator` is in `Microsoft.Windows.AI.Generative` namespace (not Imaging)
+- `ImageBuffer` is in `Microsoft.Graphics.Imaging`
+- LAF token integrated, PFN: `Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc`
+- Awaiting confirmation from Phi Silica team on feature ID for vision API + MSIX packaging requirement
+- Currently runs unpackaged; `Package.appxmanifest` and assets ready for MSIX switch
 
 ## Security Measures
 
@@ -130,5 +161,9 @@ Phi Silica has ~4K context window:
 | Agent chat (tool + summary) | 15-25s |
 | Marketing CELA review | 15-35s |
 | OCR | 3-8s |
+| Field Inspection: transcribe | 5-10s |
+| Field Inspection: classify (demo) | 1.5s (simulated) |
+| Field Inspection: report | 10-20s |
+| Field Inspection: translate | 10-20s |
 
 Power draw: ~5W sustained on NPU (~0.06 Wh per briefing)
