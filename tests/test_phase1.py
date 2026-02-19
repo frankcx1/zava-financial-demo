@@ -1738,6 +1738,120 @@ class TestFieldInspectionMilestone1(unittest.TestCase):
         self.assertNotIn("unpkg.com", self.html)
 
 
+class TestFieldInspectionMilestone2(unittest.TestCase):
+    """Milestone 2: Voice capture + field extraction endpoint."""
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def _mock_model_response(self, content):
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock()]
+        mock_resp.choices[0].message.content = content
+        mock_resp.usage = MagicMock()
+        mock_resp.usage.prompt_tokens = 200
+        mock_resp.usage.completion_tokens = 60
+        return mock_resp
+
+    def test_transcribe_returns_extracted_fields(self):
+        """POST /inspection/transcribe extracts structured fields from transcript."""
+        mock_resp = self._mock_model_response(
+            '{"location": "Building C, 2nd Floor", "datetime": "2026-03-03T10:15:00", '
+            '"reported_issue": "Water Staining", "source": "Property Manager Report"}'
+        )
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_resp
+        try:
+            resp = self.client.post("/inspection/transcribe", json={
+                "transcript": "Inspector reporting from Building C second floor."
+            })
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("fields", data)
+        self.assertEqual(data["fields"]["location"], "Building C, 2nd Floor")
+        self.assertEqual(data["fields"]["reported_issue"], "Water Staining")
+        self.assertIn("tokens_used", data)
+        self.assertIn("inference_time", data)
+
+    def test_transcribe_handles_markdown_fences(self):
+        """Field extraction parses JSON wrapped in markdown code fences."""
+        mock_resp = self._mock_model_response(
+            '```json\n{"location": "Lobby", "datetime": null, '
+            '"reported_issue": "Crack", "source": null}\n```'
+        )
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_resp
+        try:
+            resp = self.client.post("/inspection/transcribe", json={
+                "transcript": "Crack found in the lobby area."
+            })
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["fields"]["location"], "Lobby")
+        self.assertEqual(data["fields"]["reported_issue"], "Crack")
+
+    def test_transcribe_handles_unparseable_response(self):
+        """Gracefully handles model returning non-JSON output."""
+        mock_resp = self._mock_model_response(
+            "I found some issues in the building but cannot format as JSON right now."
+        )
+        saved = app_module.client.chat.completions.create.return_value
+        app_module.client.chat.completions.create.return_value = mock_resp
+        try:
+            resp = self.client.post("/inspection/transcribe", json={
+                "transcript": "Some inspection notes here."
+            })
+        finally:
+            app_module.client.chat.completions.create.return_value = saved
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        # Should return null fields, not error
+        self.assertIn("fields", data)
+        self.assertIsNone(data["fields"]["location"])
+
+    def test_transcribe_rejects_empty_transcript(self):
+        """POST /inspection/transcribe with empty transcript returns 400."""
+        resp = self.client.post("/inspection/transcribe", json={"transcript": ""})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_transcribe_rejects_missing_transcript(self):
+        """POST /inspection/transcribe with no transcript key returns 400."""
+        resp = self.client.post("/inspection/transcribe", json={})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_js_has_scripted_input_handler(self):
+        """Frontend JS includes scripted input fallback with demo transcript."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspScriptedBtn", html)
+        self.assertIn("inspector Sarah Chen", html)
+        self.assertIn("extractFields", html)
+
+    def test_js_has_speech_recognition_handler(self):
+        """Frontend JS includes Web Speech API mic handler."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("SpeechRecognition", html)
+        self.assertIn("inspMicBtn", html)
+        self.assertIn("recognition.start", html)
+
+    def test_js_has_staggered_field_animation(self):
+        """Frontend JS includes staggered field population animation."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("animateFields", html)
+        self.assertIn("field-populated", html)
+        # Verify stagger delay exists
+        self.assertIn("delay += 200", html)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)

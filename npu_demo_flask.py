@@ -5154,6 +5154,177 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         };
 
         console.log("Script loaded!");
+
+        // ── Field Inspection: Milestone 2 — Voice Capture + Field Extraction ──
+        (function() {
+            var inspMicBtn = document.getElementById("inspMicBtn");
+            var inspScriptedBtn = document.getElementById("inspScriptedBtn");
+            var inspTranscript = document.getElementById("inspTranscript");
+            var inspStatusDot = document.getElementById("inspStatusDot");
+            var inspStatusText = document.getElementById("inspStatusText");
+            var inspTokenCount = document.getElementById("inspTokenCount");
+            var recognition = null;
+            var isRecording = false;
+            var inspLocalTokens = 0;
+
+            // Field IDs in order for staggered animation
+            var fieldMap = [
+                { key: "location", elId: "inspLocation" },
+                { key: "datetime", elId: "inspDateTime" },
+                { key: "reported_issue", elId: "inspIssue" },
+                { key: "source", elId: "inspSource" }
+            ];
+
+            function setInspStatus(text, processing) {
+                if (inspStatusText) inspStatusText.textContent = text;
+                if (inspStatusDot) {
+                    inspStatusDot.classList.toggle("processing", !!processing);
+                }
+            }
+
+            function updateInspTokens(tokens) {
+                inspLocalTokens += (tokens || 0);
+                if (inspTokenCount) {
+                    inspTokenCount.textContent = inspLocalTokens + " local tokens \u00b7 $0.00 cloud cost \u00b7 0 bytes transmitted";
+                }
+            }
+
+            // Staggered field animation
+            function animateFields(fields) {
+                var delay = 0;
+                fieldMap.forEach(function(f) {
+                    var val = fields[f.key];
+                    if (val) {
+                        delay += 200;
+                        setTimeout(function() {
+                            var el = document.getElementById(f.elId);
+                            if (el) {
+                                el.value = val;
+                                el.classList.add("field-populated");
+                                setTimeout(function() { el.classList.remove("field-populated"); }, 1500);
+                            }
+                        }, delay);
+                    }
+                });
+            }
+
+            function showTranscript(text) {
+                if (inspTranscript) {
+                    inspTranscript.textContent = text;
+                    inspTranscript.classList.add("visible");
+                }
+            }
+
+            // Send transcript to backend for field extraction
+            function extractFields(transcript) {
+                setInspStatus("Extracting fields with AI...", true);
+                fetch("/inspection/transcribe", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ transcript: transcript })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        setInspStatus("Error: " + data.error, false);
+                        return;
+                    }
+                    showTranscript(data.transcript || transcript);
+                    animateFields(data.fields || {});
+                    updateInspTokens(data.tokens_used || 0);
+                    setInspStatus("Fields extracted", false);
+                })
+                .catch(function(e) {
+                    setInspStatus("Extraction failed: " + e.message, false);
+                });
+            }
+
+            // --- Mic button: Web Speech API ---
+            if (inspMicBtn) {
+                // Check for Web Speech API support
+                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+                inspMicBtn.addEventListener("click", function() {
+                    if (isRecording) {
+                        // Stop recording
+                        isRecording = false;
+                        inspMicBtn.classList.remove("recording");
+                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
+                        if (recognition) recognition.stop();
+                        return;
+                    }
+
+                    if (!SpeechRecognition) {
+                        setInspStatus("Speech API not available \u2014 use Scripted Input", false);
+                        return;
+                    }
+
+                    recognition = new SpeechRecognition();
+                    recognition.continuous = true;
+                    recognition.interimResults = true;
+                    recognition.lang = "en-US";
+
+                    var fullTranscript = "";
+                    isRecording = true;
+                    inspMicBtn.classList.add("recording");
+                    inspMicBtn.innerHTML = '<span class="rec-dot"></span> Recording... tap to stop';
+                    setInspStatus("Listening...", true);
+
+                    recognition.onresult = function(event) {
+                        var interim = "";
+                        fullTranscript = "";
+                        for (var i = 0; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                fullTranscript += event.results[i][0].transcript + " ";
+                            } else {
+                                interim += event.results[i][0].transcript;
+                            }
+                        }
+                        showTranscript(fullTranscript + interim);
+                    };
+
+                    recognition.onend = function() {
+                        isRecording = false;
+                        inspMicBtn.classList.remove("recording");
+                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
+                        if (fullTranscript.trim()) {
+                            extractFields(fullTranscript.trim());
+                        } else {
+                            setInspStatus("No speech detected \u2014 try again or use Scripted Input", false);
+                        }
+                    };
+
+                    recognition.onerror = function(e) {
+                        isRecording = false;
+                        inspMicBtn.classList.remove("recording");
+                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
+                        if (e.error === "not-allowed") {
+                            setInspStatus("Microphone access denied", false);
+                        } else if (e.error === "network") {
+                            setInspStatus("Speech API needs network \u2014 use Scripted Input for offline", false);
+                        } else {
+                            setInspStatus("Speech error: " + e.error + " \u2014 use Scripted Input", false);
+                        }
+                    };
+
+                    recognition.start();
+                });
+            }
+
+            // --- Scripted input fallback (demo safety net) ---
+            if (inspScriptedBtn) {
+                inspScriptedBtn.addEventListener("click", function() {
+                    var scriptedTranscript = "This is inspector Sarah Chen reporting from Building C, " +
+                        "second floor, north corridor. Date is March 3rd 2026, approximately 10:15 AM. " +
+                        "We received a property manager report about water staining on the ceiling tiles. " +
+                        "There are visible discoloration patterns consistent with a slow leak from the " +
+                        "floor above. Recommend checking the plumbing in Unit 3B directly above this location.";
+                    showTranscript(scriptedTranscript);
+                    extractFields(scriptedTranscript);
+                });
+            }
+        })();
+
     </script>
 
     <!-- File Picker Modal for Review & Summarize -->
@@ -8189,6 +8360,91 @@ def tomorrow_preview():
 
 
 DEMO_MODE = False  # Set via --demo-mode flag to bypass offline check for testing
+
+
+# ── Field Inspection endpoints ──
+
+@app.route('/inspection/transcribe', methods=['POST'])
+def inspection_transcribe():
+    """Extract structured inspection fields from a spoken transcript using local AI."""
+    data = request.json or {}
+    transcript = data.get('transcript', '').strip()
+
+    if not transcript:
+        return jsonify({"error": "No transcript provided"}), 400
+
+    model = DEFAULT_MODEL
+
+    system_prompt = (
+        "You are a field extraction engine for building inspection reports. "
+        "Given a spoken transcript from an inspector, extract structured fields. "
+        "Respond ONLY with valid JSON matching this schema:\n"
+        '{"location": string or null, "datetime": string or null, '
+        '"reported_issue": string or null, "source": string or null}\n'
+        "Rules:\n"
+        "- location: building, floor, area (e.g. \"Building C, 2nd Floor, North Corridor\")\n"
+        "- datetime: ISO 8601 format if possible (e.g. \"2026-03-03T10:15:00\")\n"
+        "- reported_issue: short description of the problem (e.g. \"Water Staining\")\n"
+        "- source: who reported it (e.g. \"Property Manager Report\")\n"
+        "- If a field cannot be determined from the transcript, use null\n"
+        "Do not include any text outside the JSON object."
+    )
+
+    try:
+        _call_start = _time.time()
+        response = foundry_chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": transcript},
+            ],
+            max_tokens=256,
+            temperature=0.1,
+        )
+        elapsed = _time.time() - _call_start
+        _track_model_call(response, elapsed)
+
+        raw = (response.choices[0].message.content or "").strip()
+
+        # Parse JSON from response — handle markdown fences
+        json_str = raw
+        if "```" in json_str:
+            # Strip markdown code fences
+            import re as _re
+            fence_match = _re.search(r'```(?:json)?\s*(\{.*?\})\s*```', json_str, _re.DOTALL)
+            if fence_match:
+                json_str = fence_match.group(1)
+        # Find the JSON object in the response
+        brace_start = json_str.find('{')
+        brace_end = json_str.rfind('}')
+        if brace_start >= 0 and brace_end > brace_start:
+            json_str = json_str[brace_start:brace_end + 1]
+
+        try:
+            fields = json.loads(json_str)
+        except json.JSONDecodeError:
+            # Fallback: return raw response as-is with empty fields
+            print(f"[INSPECTION] Field extraction JSON parse failed: {raw[:200]}")
+            fields = {"location": None, "datetime": None, "reported_issue": None, "source": None}
+
+        # Calculate tokens used
+        tokens_used = 0
+        if hasattr(response, 'usage') and response.usage:
+            tokens_used = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
+        else:
+            tokens_used = 300  # estimate
+
+        return jsonify({
+            "transcript": transcript,
+            "fields": fields,
+            "tokens_used": tokens_used,
+            "inference_time": round(elapsed, 1),
+        })
+
+    except Exception as e:
+        print(f"[INSPECTION] Transcribe error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/health')
 def health_check():
