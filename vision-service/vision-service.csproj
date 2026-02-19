@@ -5,17 +5,18 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Platform>x64</Platform>
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
-    <!-- Unpackaged for dev; switch to MSIX when LAF token arrives -->
-    <!-- PFN (for LAF): Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc -->
-    <WindowsPackageType>None</WindowsPackageType>
-    <EnableMsixTooling>false</EnableMsixTooling>
-    <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
+    <!-- MSIX packaging required for LAF token + systemAIModels capability -->
+    <!-- PFN: Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Prevent VS from overriding MaxVersionTested in manifest -->
+    <AppxOSMinVersionReplaceManifestVersion>false</AppxOSMinVersionReplaceManifestVersion>
+    <AppxOSMaxVersionTestedReplaceManifestVersion>false</AppxOSMaxVersionTestedReplaceManifestVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250127003-experimental3" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250410001-experimental1" />
   </ItemGroup>
 
 </Project>

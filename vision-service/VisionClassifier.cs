@@ -7,6 +7,8 @@ using System.Runtime.InteropServices.WindowsRuntime;
 
 #if WINDOWS
 using Microsoft.Graphics.Imaging;
+using Microsoft.Windows.AI;
+using Microsoft.Windows.AI.ContentModeration;
 using Microsoft.Windows.AI.Generative;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
@@ -64,17 +66,25 @@ public static class VisionClassifier
             }
 
             // Check if ImageDescriptionGenerator is available on this device
-            if (!ImageDescriptionGenerator.IsAvailable())
+            var readyState = ImageDescriptionGenerator.GetReadyState();
+            Console.WriteLine($"[VisionClassifier] GetReadyState: {readyState}");
+            if (readyState == AIFeatureReadyState.EnsureNeeded)
             {
-                Console.WriteLine("[VisionClassifier] ImageDescriptionGenerator not available, calling MakeAvailableAsync...");
-                var deployResult = await ImageDescriptionGenerator.MakeAvailableAsync();
-                Console.WriteLine($"[VisionClassifier] MakeAvailableAsync completed (Status: {deployResult.Status})");
-                if (!ImageDescriptionGenerator.IsAvailable())
+                Console.WriteLine("[VisionClassifier] Model not ready, calling EnsureReadyAsync...");
+                var deployResult = await ImageDescriptionGenerator.EnsureReadyAsync();
+                Console.WriteLine($"[VisionClassifier] EnsureReadyAsync completed (Status: {deployResult.Status})");
+                if (deployResult.Status != AIFeatureReadyResultState.Success)
                 {
-                    Console.WriteLine("[VisionClassifier] Still not available after MakeAvailableAsync");
+                    Console.WriteLine($"[VisionClassifier] EnsureReadyAsync failed: {deployResult.ExtendedError?.Message}");
                     IsAvailable = false;
                     return;
                 }
+            }
+            else if (readyState == AIFeatureReadyState.NotSupportedOnCurrentSystem)
+            {
+                Console.WriteLine("[VisionClassifier] Not supported on this system");
+                IsAvailable = false;
+                return;
             }
 
             _generator = await ImageDescriptionGenerator.CreateAsync();
@@ -108,16 +118,16 @@ public static class VisionClassifier
         {
             var imageBuffer = await BytesToImageBuffer(imageBytes);
 
-            var scenario = kind.ToLower() switch
+            var descKind = kind.ToLower() switch
             {
-                "caption" => ImageDescriptionScenario.Caption,
-                "detailed" => ImageDescriptionScenario.DetailedNarration,
-                "accessibility" => ImageDescriptionScenario.Accessibility,
-                _ => ImageDescriptionScenario.DetailedNarration
+                "caption" => ImageDescriptionKind.BriefDescription,
+                "detailed" => ImageDescriptionKind.DetailedDescrition,
+                "accessibility" => ImageDescriptionKind.AccessibleDescription,
+                _ => ImageDescriptionKind.DetailedDescrition
             };
 
-            var result = await _generator.DescribeAsync(imageBuffer, scenario);
-            var description = result.Response ?? "";
+            var result = await _generator.DescribeAsync(imageBuffer, descKind, new ContentFilterOptions());
+            var description = result.Description ?? "";
 
             return new
             {
@@ -153,9 +163,10 @@ public static class VisionClassifier
             // Get a detailed description from Phi Silica
             var descResult = await _generator.DescribeAsync(
                 imageBuffer,
-                ImageDescriptionScenario.DetailedNarration
+                ImageDescriptionKind.DetailedDescrition,
+                new ContentFilterOptions()
             );
-            var description = descResult.Response ?? "";
+            var description = descResult.Description ?? "";
 
             // Map description to constrained category + severity + confidence
             var classification = MapToInspectionCategory(description);
@@ -196,12 +207,13 @@ public static class VisionClassifier
             // Use detailed description to capture any text in the image
             var textResult = await _generator.DescribeAsync(
                 imageBuffer,
-                ImageDescriptionScenario.DetailedNarration
+                ImageDescriptionKind.DetailedDescrition,
+                new ContentFilterOptions()
             );
 
             return new
             {
-                extracted_text = textResult.Response ?? "",
+                extracted_text = textResult.Description ?? "",
                 status = "complete"
             };
         }
