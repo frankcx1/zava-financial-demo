@@ -1852,6 +1852,109 @@ class TestFieldInspectionMilestone2(unittest.TestCase):
         self.assertIn("delay += 200", html)
 
 
+class TestFieldInspectionMilestone3(unittest.TestCase):
+    """Milestone 3: Camera capture + constrained vision classification."""
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    # ── Demo classification endpoint ──
+
+    def test_classify_demo_water_damage(self):
+        """Demo classification returns correct Water Damage preset."""
+        resp = self.client.post("/inspection/classify", json={"demo_type": "water_damage"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["category"], "Water Damage")
+        self.assertEqual(data["severity"], "Moderate")
+        self.assertEqual(data["confidence"], 82)
+        self.assertIn("explanation", data)
+        self.assertEqual(data["source"], "demo_preset")
+
+    def test_classify_demo_electrical_hazard(self):
+        """Demo classification returns correct Electrical Hazard preset."""
+        resp = self.client.post("/inspection/classify", json={"demo_type": "electrical_hazard"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["category"], "Electrical Hazard")
+        self.assertEqual(data["severity"], "Critical")
+        self.assertEqual(data["confidence"], 91)
+
+    def test_classify_all_five_categories(self):
+        """All five constrained categories are available as demo presets."""
+        categories = ["water_damage", "structural_crack", "mold", "electrical_hazard", "trip_hazard"]
+        for cat in categories:
+            resp = self.client.post("/inspection/classify", json={"demo_type": cat})
+            self.assertEqual(resp.status_code, 200, f"Failed for {cat}")
+            data = resp.get_json()
+            self.assertIn("category", data)
+            self.assertIn("severity", data)
+            self.assertIn("confidence", data)
+            self.assertIn("explanation", data)
+
+    def test_classify_invalid_demo_type(self):
+        """Invalid demo_type with no image returns 400."""
+        resp = self.client.post("/inspection/classify", json={"demo_type": "nonexistent"})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_classify_no_input(self):
+        """No image or demo_type returns 400."""
+        resp = self.client.post("/inspection/classify", json={})
+        self.assertEqual(resp.status_code, 400)
+
+    # ── Confidence thresholds ──
+
+    def test_confidence_thresholds_in_presets(self):
+        """Verify demo presets span different confidence bands."""
+        categories = ["water_damage", "structural_crack", "mold", "electrical_hazard", "trip_hazard"]
+        confidences = []
+        for cat in categories:
+            resp = self.client.post("/inspection/classify", json={"demo_type": cat})
+            data = resp.get_json()
+            confidences.append(data["confidence"])
+        # At least one should be >= 75 (green), at least one 60-74 (amber range)
+        self.assertTrue(any(c >= 75 for c in confidences), "Need at least one high-confidence finding")
+        self.assertTrue(any(c < 80 for c in confidences), "Need at least one lower-confidence finding")
+
+    # ── Frontend JS ──
+
+    def test_js_has_camera_controls(self):
+        """Frontend JS includes camera start/capture/stop handlers."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspStartCameraBtn", html)
+        self.assertIn("inspCapturePhotoBtn", html)
+        self.assertIn("getUserMedia", html)
+        self.assertIn("classifyPhoto", html)
+
+    def test_js_has_demo_photo_loader(self):
+        """Frontend JS includes demo photo button with all 5 categories."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspDemoPhotoBtn", html)
+        self.assertIn("water_damage", html)
+        self.assertIn("structural_crack", html)
+        self.assertIn("mold", html)
+        self.assertIn("electrical_hazard", html)
+        self.assertIn("trip_hazard", html)
+
+    def test_js_has_classification_display(self):
+        """Frontend JS includes classification card rendering."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("showClassification", html)
+        self.assertIn("conf-green", html)
+        self.assertIn("conf-amber", html)
+        self.assertIn("conf-red", html)
+
+    def test_js_has_findings_log(self):
+        """Frontend JS includes findings log management."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("addFinding", html)
+        self.assertIn("inspFindings", html)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)
