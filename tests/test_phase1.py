@@ -1650,8 +1650,9 @@ class TestFieldInspectionMilestone1(unittest.TestCase):
         self.assertIn('id="inspSource"', self.html)
 
     def test_dictation_textarea_present(self):
-        """Dictation textarea for Win+H input exists."""
+        """Dictation textarea for Win+H input exists with instructional hint."""
         self.assertIn('id="inspTranscriptInput"', self.html)
+        self.assertIn("Win+H", self.html)
 
     def test_extract_button_present(self):
         """Extract Fields with AI button exists."""

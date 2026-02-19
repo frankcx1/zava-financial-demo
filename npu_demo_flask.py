@@ -2756,7 +2756,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         <input type="text" id="inspSource" placeholder="e.g. Property Manager Report">
                     </div>
 
-                    <textarea class="insp-transcript-input" id="inspTranscriptInput" rows="4" placeholder="Dictate here (Win+H) or type inspection notes..."></textarea>
+                    <p style="margin:12px 0 6px; font-size:0.82em; color:rgba(255,255,255,0.5);">Press <kbd style="background:rgba(255,255,255,0.12); padding:1px 5px; border-radius:3px; font-size:0.95em;">Win+H</kbd> to dictate with on-device speech recognition, or type notes below.</p>
+                    <textarea class="insp-transcript-input" id="inspTranscriptInput" rows="4" placeholder="Inspection notes will appear here..."></textarea>
                     <div style="display:flex; gap:8px; margin-top:8px;">
                         <button class="insp-mic-btn" id="inspExtractBtn" style="flex:1;">
                             &#129504; Extract Fields with AI
@@ -5934,7 +5935,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 var extractBtn = document.getElementById("inspExtractBtn");
                 var scripted = document.getElementById("inspScriptedBtn");
                 if (extractBtn) extractBtn.addEventListener("click", function() {
-                    addTask("Speech-to-text");
                     addTask("Field extraction");
                 });
                 if (scripted) scripted.addEventListener("click", function() {
