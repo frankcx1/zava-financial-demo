@@ -2228,6 +2228,129 @@ class TestFieldInspectionMilestone6(unittest.TestCase):
         self.assertIn("no cloud API call", html)
 
 
+class TestFieldInspectionMilestone7(unittest.TestCase):
+    """Milestone 7: Router Escalation + Dashboard Tally — frontend elements + demo data."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = app.test_client()
+
+    # ── Part A: Escalation Dialog ──
+
+    def test_escalation_overlay_exists(self):
+        """Escalation overlay with dialog structure exists in HTML."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspEscOverlay"', html)
+        self.assertIn("insp-escalation-dialog", html)
+        self.assertIn("LOW CONFIDENCE FINDING", html)
+
+    def test_escalation_has_two_options(self):
+        """Escalation dialog has Cloud and Local option panels."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspEscCloud"', html)
+        self.assertIn('id="inspEscLocal"', html)
+        self.assertIn("Escalate to Cloud", html)
+        self.assertIn("Keep Local", html)
+        self.assertIn("RECOMMENDED", html)
+
+    def test_escalation_shows_payload_diff(self):
+        """Escalation dialog shows what would be sent vs withheld."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspEscPayload", html)
+        self.assertIn("Withheld: voice transcript, pen annotations, report draft", html)
+
+    def test_stayed_local_banner_exists(self):
+        """Stayed-local banner with lock animation exists."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspStayedLocal"', html)
+        self.assertIn("Inspection completed locally", html)
+        self.assertIn("inspLockIcon", html)
+
+    def test_js_escalation_trigger(self):
+        """JS checks escalation on classification results in 60-74% band."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("_inspCheckEscalation", html)
+        self.assertIn("result.confidence >= 60", html)
+        self.assertIn("result.confidence < 75", html)
+
+    def test_js_keep_local_handler(self):
+        """JS Keep Local handler hides overlay, shows stayed-local banner."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspEscLocal", html)
+        self.assertIn("flagged_for_review", html)
+        self.assertIn("data stayed local", html)
+
+    def test_js_escalate_cloud_handler(self):
+        """JS Escalate Cloud handler shows offline fallback message."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspEscCloud", html)
+        self.assertIn("No connectivity", html)
+        self.assertIn("airplane mode", html)
+
+    def test_structural_crack_triggers_escalation(self):
+        """structural_crack demo preset has confidence 72% (in escalation band)."""
+        self.assertEqual(app_module._DEMO_CLASSIFICATIONS["structural_crack"]["confidence"], 72)
+
+    # ── Part B: Dashboard Tally ──
+
+    def test_dashboard_overlay_exists(self):
+        """Dashboard tally overlay exists with local/cloud columns."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspDashOverlay"', html)
+        self.assertIn("Inspection Summary", html)
+        self.assertIn("Local AI Tasks", html)
+        self.assertIn("Cloud Tasks", html)
+
+    def test_dashboard_has_close_button(self):
+        """Dashboard has a close button to return to workspace."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspDashClose"', html)
+
+    def test_summary_button_exists(self):
+        """Show Summary button exists in bottom bar."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn('id="inspSummaryBtn"', html)
+        self.assertIn("Show Summary", html)
+
+    def test_js_task_tracking(self):
+        """JS tracks completed tasks for dashboard tally."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("_inspCompletedTasks", html)
+        self.assertIn("Speech-to-text", html)
+        self.assertIn("Field extraction", html)
+        self.assertIn("Vision classification", html)
+        self.assertIn("Report generation", html)
+        self.assertIn("Translation", html)
+        self.assertIn("Routing logic", html)
+
+    def test_js_dashboard_shows_tokenomics(self):
+        """JS dashboard summary includes token count and zero cloud cost."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspDashSummary", html)
+        self.assertIn("$0.00", html)
+        self.assertIn("0 bytes", html)
+
+    def test_js_classification_hooks_escalation(self):
+        """Milestone 3 classification callbacks invoke escalation check."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        # Should appear twice (demo path + upload path)
+        count = html.count("_inspCheckEscalation")
+        self.assertGreaterEqual(count, 3)  # declaration + 2 call sites
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)

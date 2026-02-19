@@ -2203,6 +2203,51 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .insp-token-count { color: rgba(255,255,255,0.4); font-size: 0.85em; }
         .insp-privacy { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.4); font-size: 0.85em; }
 
+        /* ── Inspection Escalation Dialog ── */
+        .insp-escalation-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .insp-escalation-dialog { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; padding: 28px; max-width: 700px; width: 90%; }
+        .insp-esc-header { font-size: 1.2em; font-weight: 600; margin-bottom: 6px; color: #f59e0b; }
+        .insp-esc-subtext { font-size: 0.85em; color: rgba(255,255,255,0.5); margin-bottom: 20px; }
+        .insp-esc-options { display: flex; gap: 16px; }
+        .insp-esc-option { flex: 1; padding: 20px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.1); cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
+        .insp-esc-option:hover { transform: scale(1.02); }
+        .insp-esc-option.esc-cloud { border-color: rgba(255,185,0,0.3); }
+        .insp-esc-option.esc-cloud:hover { border-color: #FFB900; }
+        .insp-esc-option.esc-local { border-color: rgba(0,204,106,0.4); background: rgba(0,204,106,0.05); }
+        .insp-esc-option.esc-local:hover { border-color: #00CC6A; }
+        .insp-esc-option h4 { margin: 0 0 8px 0; font-size: 1em; }
+        .insp-esc-option p { margin: 4px 0; font-size: 0.82em; color: rgba(255,255,255,0.6); }
+        .insp-esc-option .esc-highlight { font-size: 0.8em; font-weight: 600; margin-top: 8px; }
+        .insp-esc-option.esc-local .esc-highlight { color: #00CC6A; }
+        .insp-esc-option.esc-cloud .esc-highlight { color: #FFB900; }
+        .insp-esc-preferred { display: inline-block; font-size: 0.7em; background: #00CC6A; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: 8px; vertical-align: middle; }
+
+        /* ── Inspection Stayed Local Banner ── */
+        .insp-stayed-local { background: rgba(0,204,106,0.08); border: 1px solid rgba(0,204,106,0.3); border-radius: 10px; padding: 16px; text-align: center; margin-top: 12px; }
+        .insp-stayed-local .lock-icon { font-size: 2em; animation: lockPulse 0.6s ease-out; }
+        .insp-stayed-local .sl-title { font-weight: 600; margin-top: 4px; color: #00CC6A; }
+        .insp-stayed-local .sl-detail { font-size: 0.82em; color: rgba(255,255,255,0.5); margin-top: 4px; }
+
+        /* ── Inspection Dashboard Tally ── */
+        .insp-dashboard-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1001; display: flex; align-items: center; justify-content: center; }
+        .insp-dashboard { background: #1a1a2e; border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 36px; max-width: 750px; width: 90%; }
+        .insp-dashboard h2 { text-align: center; margin: 0 0 24px 0; font-size: 1.3em; color: #fff; }
+        .insp-dash-columns { display: flex; gap: 20px; margin-bottom: 24px; }
+        .insp-dash-col { flex: 1; border-radius: 14px; padding: 24px; }
+        .insp-dash-col.local { background: rgba(0,204,106,0.08); border: 1px solid rgba(0,204,106,0.25); }
+        .insp-dash-col.cloud { background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.15); }
+        .insp-dash-col h3 { margin: 0 0 16px 0; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; }
+        .insp-dash-col.local h3 { color: #00CC6A; }
+        .insp-dash-col.cloud h3 { color: #ef4444; }
+        .insp-dash-task { padding: 8px 0; font-size: 0.9em; color: rgba(255,255,255,0.7); display: flex; align-items: center; gap: 8px; }
+        .insp-dash-task .check { color: #00CC6A; font-weight: bold; }
+        .insp-dash-zero { font-size: 3em; text-align: center; color: rgba(239,68,68,0.4); padding: 20px 0; }
+        .insp-dash-summary { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 20px; text-align: center; font-size: 0.9em; color: rgba(255,255,255,0.5); margin-bottom: 20px; }
+        .insp-dash-close { display: block; margin: 0 auto; padding: 12px 32px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; background: rgba(255,255,255,0.05); color: #fff; font-size: 0.95em; cursor: pointer; transition: transform 0.1s; }
+        .insp-dash-close:hover { transform: scale(1.02); background: rgba(255,255,255,0.1); }
+        .insp-summary-btn { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); font-size: 0.8em; cursor: pointer; transition: transform 0.1s; }
+        .insp-summary-btn:hover { transform: scale(1.02); color: #fff; }
+
         @media (max-width: 1200px) {
             .inspection-workspace { grid-template-columns: 260px 1fr 300px; }
         }
@@ -2765,6 +2810,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             <div class="report-empty">Report will appear here after generation.</div>
                         </div>
                     </div>
+
+                    <div class="insp-stayed-local" id="inspStayedLocal" style="display:none;">
+                        <div class="lock-icon" id="inspLockIcon">&#128274;</div>
+                        <div class="sl-title">Inspection completed locally</div>
+                        <div class="sl-detail">Finding flagged for on-site expert review. Data leaving device: None.</div>
+                    </div>
                 </div>
 
                 <!-- Bottom Bar: Tokenomics + Status -->
@@ -2774,7 +2825,50 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         <span id="inspStatusText">Ready</span>
                     </div>
                     <div class="insp-token-count" id="inspTokenCount">0 local tokens &middot; $0.00 cloud cost &middot; 0 bytes transmitted</div>
+                    <button class="insp-summary-btn" id="inspSummaryBtn" style="display:none;">&#128202; Show Summary</button>
                     <div class="insp-privacy">&#128274; 100% Local Processing &mdash; {{CHIP_LABEL}}</div>
+                </div>
+
+                <!-- Escalation Dialog -->
+                <div class="insp-escalation-overlay" id="inspEscOverlay" style="display:none;">
+                    <div class="insp-escalation-dialog">
+                        <div class="insp-esc-header">&#9888;&#65039; LOW CONFIDENCE FINDING &mdash; Escalation Available</div>
+                        <div class="insp-esc-subtext">Confidence below 75%. Review escalation options:</div>
+                        <div class="insp-esc-options">
+                            <div class="insp-esc-option esc-cloud" id="inspEscCloud">
+                                <h4>&#9729;&#65039; Escalate to Cloud</h4>
+                                <p>Send this photo to a frontier vision model for detailed analysis</p>
+                                <p id="inspEscPayload">Sending: 1 photo</p>
+                                <p>Withheld: voice transcript, pen annotations, report draft</p>
+                                <div class="esc-highlight">Requires connectivity</div>
+                            </div>
+                            <div class="insp-esc-option esc-local" id="inspEscLocal">
+                                <h4>&#128274; Keep Local <span class="insp-esc-preferred">RECOMMENDED</span></h4>
+                                <p>Proceed with local classification. Flag for manual expert review.</p>
+                                <p>Data leaving device: None</p>
+                                <div class="esc-highlight">Cost: $0.00</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dashboard Tally -->
+                <div class="insp-dashboard-overlay" id="inspDashOverlay" style="display:none;">
+                    <div class="insp-dashboard">
+                        <h2>&#128202; Inspection Summary</h2>
+                        <div class="insp-dash-columns">
+                            <div class="insp-dash-col local">
+                                <h3>Local AI Tasks</h3>
+                                <div id="inspDashLocalTasks"></div>
+                            </div>
+                            <div class="insp-dash-col cloud">
+                                <h3>Cloud Tasks</h3>
+                                <div class="insp-dash-zero" id="inspDashCloudCount">0</div>
+                            </div>
+                        </div>
+                        <div class="insp-dash-summary" id="inspDashSummary"></div>
+                        <button class="insp-dash-close" id="inspDashClose">Close</button>
+                    </div>
                 </div>
 
             </div>
@@ -5451,6 +5545,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         addFinding(result, dataUrl);
                         updateInspTokens3(result.tokens_used || 0);
                         setInspStatus3("Classification complete: " + result.category, false);
+                        if (window._inspCheckEscalation) window._inspCheckEscalation(result, dataUrl);
                     })
                     .catch(function(e) {
                         setInspStatus3("Classification failed: " + e.message, false);
@@ -5474,6 +5569,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     addFinding(result, dataUrl);
                     updateInspTokens3(result.tokens_used || 0);
                     setInspStatus3("Classification complete: " + result.category, false);
+                    if (window._inspCheckEscalation) window._inspCheckEscalation(result, dataUrl);
                 })
                 .catch(function(e) {
                     setInspStatus3("Classification failed: " + e.message, false);
@@ -5773,6 +5869,186 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     translateBtn.disabled = false;
                     translateBtn.textContent = "\ud83c\udf10 Translate to Spanish";
                 });
+            });
+        })();
+
+        // ── Field Inspection: Milestone 7 — Router Escalation + Dashboard Tally ──
+        (function() {
+            var escOverlay = document.getElementById("inspEscOverlay");
+            var escCloud = document.getElementById("inspEscCloud");
+            var escLocal = document.getElementById("inspEscLocal");
+            var escPayload = document.getElementById("inspEscPayload");
+            var stayedLocal = document.getElementById("inspStayedLocal");
+            var lockIcon = document.getElementById("inspLockIcon");
+            var summaryBtn = document.getElementById("inspSummaryBtn");
+            var dashOverlay = document.getElementById("inspDashOverlay");
+            var dashClose = document.getElementById("inspDashClose");
+            var dashLocalTasks = document.getElementById("inspDashLocalTasks");
+            var dashSummary = document.getElementById("inspDashSummary");
+            var dashCloudCount = document.getElementById("inspDashCloudCount");
+            var statusDot = document.getElementById("inspStatusDot");
+            var statusText = document.getElementById("inspStatusText");
+            var tokenCount = document.getElementById("inspTokenCount");
+
+            if (!escOverlay) return;
+
+            // Track completed tasks for dashboard
+            window._inspCompletedTasks = window._inspCompletedTasks || [];
+            var pendingEscFinding = null;
+
+            function setStatus(text, processing) {
+                if (statusText) statusText.textContent = text;
+                if (statusDot) statusDot.classList.toggle("processing", !!processing);
+            }
+
+            // Part A: Escalation trigger — called after classification
+            window._inspCheckEscalation = function(result, photoDataUrl) {
+                if (result.confidence >= 60 && result.confidence < 75) {
+                    // Low confidence — show escalation dialog
+                    pendingEscFinding = { result: result, photo: photoDataUrl };
+                    var photoSize = photoDataUrl ? Math.round(photoDataUrl.length * 0.75 / 1024) : 0;
+                    if (escPayload) escPayload.textContent = "Sending: 1 photo (" + photoSize + " KB)";
+                    escOverlay.style.display = "flex";
+                }
+            };
+
+            // "Keep Local" — recommended path
+            escLocal.addEventListener("click", function() {
+                escOverlay.style.display = "none";
+
+                // Show stayed-local banner with lock animation
+                if (stayedLocal) {
+                    stayedLocal.style.display = "block";
+                    if (lockIcon) {
+                        lockIcon.style.animation = "none";
+                        lockIcon.offsetHeight;
+                        lockIcon.style.animation = "";
+                    }
+                }
+
+                // Flag finding in the findings log
+                if (pendingEscFinding) {
+                    var findings = window._inspFindings || [];
+                    for (var i = findings.length - 1; i >= 0; i--) {
+                        if (findings[i].classification.confidence === pendingEscFinding.result.confidence) {
+                            findings[i].flagged_for_review = true;
+                            break;
+                        }
+                    }
+                }
+
+                setStatus("Finding flagged for expert review \u2014 data stayed local", false);
+                addTask("Routing logic");
+                if (summaryBtn) summaryBtn.style.display = "inline-block";
+                pendingEscFinding = null;
+            });
+
+            // "Escalate to Cloud" — connectivity required
+            escCloud.addEventListener("click", function() {
+                escOverlay.style.display = "none";
+                setStatus("No connectivity \u2014 keeping data local (airplane mode)", false);
+
+                // Show stayed-local as fallback
+                if (stayedLocal) {
+                    stayedLocal.style.display = "block";
+                    if (lockIcon) {
+                        lockIcon.style.animation = "none";
+                        lockIcon.offsetHeight;
+                        lockIcon.style.animation = "";
+                    }
+                }
+
+                addTask("Routing logic");
+                if (summaryBtn) summaryBtn.style.display = "inline-block";
+                pendingEscFinding = null;
+            });
+
+            // Task tracking for dashboard
+            function addTask(name) {
+                var tasks = window._inspCompletedTasks;
+                if (tasks.indexOf(name) === -1) tasks.push(name);
+            }
+
+            // Auto-track tasks based on events
+            // Observe findings additions for speech/field/vision tasks
+            var origPush = null;
+            function setupTaskTracking() {
+                // Track speech-to-text and field extraction from Milestone 2
+                var mic = document.getElementById("inspMicBtn");
+                var scripted = document.getElementById("inspScriptedBtn");
+                if (mic) mic.addEventListener("click", function() {
+                    addTask("Speech-to-text");
+                    addTask("Field extraction");
+                });
+                if (scripted) scripted.addEventListener("click", function() {
+                    addTask("Speech-to-text");
+                    addTask("Field extraction");
+                });
+
+                // Track vision classification from Milestone 3
+                var demoPhoto = document.getElementById("inspDemoPhotoBtn");
+                var capturePhoto = document.getElementById("inspCapturePhotoBtn");
+                if (demoPhoto) demoPhoto.addEventListener("click", function() {
+                    addTask("Vision classification");
+                });
+                if (capturePhoto) capturePhoto.addEventListener("click", function() {
+                    addTask("Vision classification");
+                });
+
+                // Track report generation from Milestone 5
+                var generateBtn = document.getElementById("inspGenerateBtn");
+                if (generateBtn) generateBtn.addEventListener("click", function() {
+                    addTask("Report generation");
+                });
+
+                // Track translation from Milestone 6
+                var translateBtn = document.getElementById("inspTranslateBtn");
+                if (translateBtn) translateBtn.addEventListener("click", function() {
+                    addTask("Translation");
+                });
+            }
+            setupTaskTracking();
+
+            // Part B: Dashboard Tally
+            summaryBtn.addEventListener("click", function() {
+                showDashboard();
+            });
+
+            function showDashboard() {
+                var allTasks = [
+                    "Speech-to-text",
+                    "Field extraction",
+                    "Vision classification",
+                    "Report generation",
+                    "Translation",
+                    "Routing logic"
+                ];
+
+                var completed = window._inspCompletedTasks || [];
+                var html = "";
+                for (var i = 0; i < allTasks.length; i++) {
+                    var done = completed.indexOf(allTasks[i]) !== -1;
+                    html += '<div class="insp-dash-task">' +
+                        (done ? '<span class="check">\u2713</span>' : '<span style="color:rgba(255,255,255,0.2);">\u2013</span>') +
+                        '<span>' + allTasks[i] + '</span></div>';
+                }
+                if (dashLocalTasks) dashLocalTasks.innerHTML = html;
+                if (dashCloudCount) dashCloudCount.textContent = "0";
+
+                // Summary bar with tokenomics
+                var tokens = 0;
+                if (tokenCount) tokens = parseInt(tokenCount.textContent) || 0;
+                if (dashSummary) {
+                    dashSummary.textContent = "Total tokens: " + tokens +
+                        " | Cost: $0.00 | Transmitted: 0 bytes";
+                }
+
+                dashOverlay.style.display = "flex";
+            }
+            window._inspShowDashboard = showDashboard;
+
+            dashClose.addEventListener("click", function() {
+                dashOverlay.style.display = "none";
             });
         })();
 
@@ -8826,7 +9102,7 @@ _DEMO_CLASSIFICATIONS = {
     "structural_crack": {
         "category": "Structural Crack",
         "severity": "High",
-        "confidence": 78,
+        "confidence": 72,
         "explanation": "Diagonal crack pattern in load-bearing wall suggests foundation settlement."
     },
     "mold": {
