@@ -1605,6 +1605,139 @@ class TestRouterAnalyzeMarketingMode(unittest.TestCase):
         self.assertNotIn("verdict", event_types)
 
 
+class TestFieldInspectionMilestone1(unittest.TestCase):
+    """Milestone 1: Field Inspection scaffold — nav, layout, all UI elements."""
+
+    def setUp(self):
+        self.client = app.test_client()
+        resp = self.client.get("/")
+        self.html = resp.data.decode()
+
+    # ── Navigation ──
+
+    def test_sidebar_nav_item_exists(self):
+        """Field Inspection appears in sidebar nav."""
+        self.assertIn('data-tab="field"', self.html)
+        self.assertIn("Field Inspection", self.html)
+
+    def test_hidden_tab_button_exists(self):
+        """Hidden tab button exists for switchToTab backward compat."""
+        self.assertIn('id="fieldTabBtn"', self.html)
+
+    def test_tab_content_div_exists(self):
+        """Tab content div with correct ID exists."""
+        self.assertIn('id="field-tab"', self.html)
+        self.assertIn("tab-content", self.html)
+
+    # ── Four-panel layout ──
+
+    def test_inspection_workspace_layout(self):
+        """Workspace uses the four-panel grid layout."""
+        self.assertIn("inspection-workspace", self.html)
+        self.assertIn("inspection-form-panel", self.html)
+        self.assertIn("inspection-photo-panel", self.html)
+        self.assertIn("inspection-report-panel", self.html)
+        self.assertIn("inspection-bottom-bar", self.html)
+
+    # ── Left panel: Structured form ──
+
+    def test_form_fields_present(self):
+        """Location, DateTime, Issue, Source fields exist."""
+        self.assertIn('id="inspLocation"', self.html)
+        self.assertIn('id="inspDateTime"', self.html)
+        self.assertIn('id="inspIssue"', self.html)
+        self.assertIn('id="inspSource"', self.html)
+
+    def test_mic_button_present(self):
+        """Voice capture mic button exists."""
+        self.assertIn('id="inspMicBtn"', self.html)
+
+    def test_scripted_input_fallback(self):
+        """Scripted demo input button exists as fallback."""
+        self.assertIn('id="inspScriptedBtn"', self.html)
+
+    def test_transcript_area_present(self):
+        """Transcript collapsible panel exists."""
+        self.assertIn('id="inspTranscript"', self.html)
+
+    # ── Center panel: Photo grid ──
+
+    def test_photo_grid_present(self):
+        """Photo grid area with empty state exists."""
+        self.assertIn('id="inspPhotoGrid"', self.html)
+        self.assertIn("No photos captured", self.html)
+
+    def test_camera_controls_present(self):
+        """Camera preview, capture, and demo photo buttons exist."""
+        self.assertIn('id="inspCameraPreview"', self.html)
+        self.assertIn('id="inspStartCameraBtn"', self.html)
+        self.assertIn('id="inspCapturePhotoBtn"', self.html)
+        self.assertIn('id="inspDemoPhotoBtn"', self.html)
+
+    def test_classification_card_present(self):
+        """Classification result card with category, severity, confidence exists."""
+        self.assertIn('id="inspClassCard"', self.html)
+        self.assertIn('id="inspClassCategory"', self.html)
+        self.assertIn('id="inspClassSeverity"', self.html)
+        self.assertIn('id="inspClassConfPct"', self.html)
+        self.assertIn('id="inspClassConfBar"', self.html)
+        self.assertIn('id="inspClassExplain"', self.html)
+
+    # ── Right panel: Findings + Report ──
+
+    def test_findings_log_present(self):
+        """Findings log area exists."""
+        self.assertIn('id="inspFindings"', self.html)
+
+    def test_report_controls_present(self):
+        """Generate Report and Translate buttons exist."""
+        self.assertIn('id="inspGenerateBtn"', self.html)
+        self.assertIn('id="inspTranslateBtn"', self.html)
+
+    def test_report_draft_area_present(self):
+        """Report preview area exists."""
+        self.assertIn('id="inspReportDraft"', self.html)
+        self.assertIn('id="inspReportContent"', self.html)
+
+    # ── Bottom bar ──
+
+    def test_bottom_bar_tokenomics(self):
+        """Bottom bar shows token count and privacy indicator."""
+        self.assertIn('id="inspTokenCount"', self.html)
+        self.assertIn("0 local tokens", self.html)
+        self.assertIn("$0.00 cloud cost", self.html)
+        self.assertIn("0 bytes transmitted", self.html)
+
+    def test_bottom_bar_status(self):
+        """Bottom bar shows status indicator."""
+        self.assertIn('id="inspStatusDot"', self.html)
+        self.assertIn('id="inspStatusText"', self.html)
+
+    def test_bottom_bar_privacy_badge(self):
+        """Bottom bar shows 100% local processing badge."""
+        self.assertIn("100% Local Processing", self.html)
+
+    # ── CSS ──
+
+    def test_inspection_css_present(self):
+        """Inspection-specific CSS classes are defined."""
+        self.assertIn(".inspection-workspace", self.html)
+        self.assertIn(".inspection-form-panel", self.html)
+        self.assertIn(".photo-grid", self.html)
+        self.assertIn(".classification-card", self.html)
+        self.assertIn(".insp-mic-btn", self.html)
+
+    # ── No external dependencies ──
+
+    def test_no_external_cdn(self):
+        """No external CDN or font references that would break airplane mode."""
+        # Should not reference external stylesheets or scripts
+        self.assertNotIn("fonts.googleapis.com", self.html)
+        self.assertNotIn("cdn.jsdelivr.net", self.html)
+        self.assertNotIn("cdnjs.cloudflare.com", self.html)
+        self.assertNotIn("unpkg.com", self.html)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)

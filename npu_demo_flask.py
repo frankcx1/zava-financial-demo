@@ -2121,6 +2121,94 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             transition: width 0.3s ease;
         }
         .warmup-time { font-size: 0.8em; color: rgba(255,255,255,0.35); margin-top: 12px; }
+
+        /* ── Field Inspection ── */
+        .inspection-workspace { display: grid; grid-template-columns: 300px 1fr 340px; grid-template-rows: 1fr auto; gap: 16px; height: calc(100vh - 80px); padding: 16px; }
+        .inspection-form-panel { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; overflow-y: auto; }
+        .inspection-photo-panel { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+        .inspection-report-panel { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; overflow-y: auto; }
+        .inspection-bottom-bar { grid-column: 1 / -1; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 0.85em; }
+
+        .inspection-form-panel h3 { margin: 0 0 16px 0; font-size: 1em; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 1px; }
+        .insp-field { margin-bottom: 14px; }
+        .insp-field label { display: block; font-size: 0.8em; color: rgba(255,255,255,0.5); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .insp-field input, .insp-field select { width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 10px 12px; border-radius: 8px; font-size: 0.95em; transition: border-color 0.15s, background 0.15s; }
+        .insp-field input:focus, .insp-field select:focus { outline: none; border-color: #60a5fa; background: rgba(255,255,255,0.12); }
+        .insp-field input.field-populated { border-color: #34d399; background: rgba(52,211,153,0.08); animation: fieldPop 0.3s ease; }
+        @keyframes fieldPop { 0% { transform: translateX(-4px); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
+
+        .insp-mic-btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; font-size: 1em; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: transform 0.1s; }
+        .insp-mic-btn:hover { transform: scale(1.02); }
+        .insp-mic-btn.recording { background: linear-gradient(135deg, #ef4444, #dc2626); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .insp-mic-btn .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; display: none; }
+        .insp-mic-btn.recording .rec-dot { display: inline-block; animation: pulse 1s infinite; }
+
+        .insp-transcript { margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 0.85em; color: rgba(255,255,255,0.6); max-height: 120px; overflow-y: auto; display: none; }
+        .insp-transcript.visible { display: block; }
+
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; flex: 1; align-content: start; }
+        .photo-grid-empty { display: flex; align-items: center; justify-content: center; flex: 1; color: rgba(255,255,255,0.3); font-size: 0.95em; }
+        .photo-thumb { position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s; }
+        .photo-thumb:hover { border-color: #60a5fa; }
+        .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .photo-thumb .photo-badge { position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 4px; font-size: 0.7em; font-weight: 600; }
+        .photo-badge.severity-low { background: #22c55e; color: #000; }
+        .photo-badge.severity-moderate { background: #f59e0b; color: #000; }
+        .photo-badge.severity-high { background: #ef4444; color: #fff; }
+        .photo-badge.severity-critical { background: #7c3aed; color: #fff; }
+
+        .photo-capture-controls { display: flex; gap: 10px; margin-top: 12px; }
+        .photo-capture-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9em; transition: transform 0.1s; }
+        .photo-capture-btn:hover { transform: scale(1.02); }
+        .photo-capture-btn.primary { background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; }
+        .photo-capture-btn.secondary { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+
+        .camera-live-preview { width: 100%; border-radius: 8px; background: #000; display: none; }
+        .camera-live-preview.active { display: block; }
+
+        .classification-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 14px; margin-top: 10px; }
+        .classification-card .cc-category { font-size: 1.1em; font-weight: 600; margin-bottom: 6px; }
+        .classification-card .cc-row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+        .classification-card .cc-severity { padding: 3px 10px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+        .classification-card .cc-confidence { flex: 1; }
+        .classification-card .cc-confidence-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .classification-card .cc-confidence-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+        .conf-green .cc-confidence-fill { background: #22c55e; }
+        .conf-amber .cc-confidence-fill { background: #f59e0b; }
+        .conf-red .cc-confidence-fill { background: #ef4444; }
+        .classification-card .cc-explain { font-size: 0.85em; color: rgba(255,255,255,0.6); margin-top: 8px; }
+
+        .findings-log { margin-bottom: 16px; }
+        .findings-log h3 { margin: 0 0 10px 0; font-size: 0.9em; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; }
+        .finding-item { padding: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; margin-bottom: 8px; font-size: 0.85em; display: flex; align-items: center; gap: 10px; }
+        .finding-item .finding-num { width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-size: 0.75em; flex-shrink: 0; }
+        .finding-item .finding-text { flex: 1; }
+
+        .report-draft { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px; margin-top: 12px; }
+        .report-draft h4 { margin: 0 0 10px 0; font-size: 0.85em; color: rgba(255,255,255,0.5); }
+        .report-draft .report-content { font-size: 0.9em; line-height: 1.6; color: rgba(255,255,255,0.8); }
+        .report-draft .report-content h1, .report-draft .report-content h2, .report-draft .report-content h3 { color: #fff; margin: 12px 0 6px 0; }
+        .report-draft .report-empty { color: rgba(255,255,255,0.3); font-style: italic; }
+
+        .insp-generate-btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: linear-gradient(135deg, #10b981, #059669); color: #fff; font-size: 0.95em; cursor: pointer; margin-top: 12px; transition: transform 0.1s, opacity 0.2s; }
+        .insp-generate-btn:hover { transform: scale(1.02); }
+        .insp-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .insp-translate-btn { width: 100%; padding: 10px; border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; background: rgba(255,255,255,0.05); color: #fff; font-size: 0.9em; cursor: pointer; margin-top: 8px; transition: transform 0.1s; }
+        .insp-translate-btn:hover { transform: scale(1.02); }
+
+        .insp-status { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.5); }
+        .insp-status .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+        .insp-status .status-dot.processing { background: #f59e0b; animation: pulse 1s infinite; }
+        .insp-token-count { color: rgba(255,255,255,0.4); font-size: 0.85em; }
+        .insp-privacy { display: flex; align-items: center; gap: 6px; color: rgba(255,255,255,0.4); font-size: 0.85em; }
+
+        @media (max-width: 1200px) {
+            .inspection-workspace { grid-template-columns: 260px 1fr 300px; }
+        }
+        @media (max-width: 900px) {
+            .inspection-workspace { grid-template-columns: 1fr; grid-template-rows: auto; height: auto; }
+        }
     </style>
 </head>
 <body>
@@ -2166,6 +2254,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <span class="nav-icon">&#127380;</span>
             <span class="sidebar-label">ID Verification<span class="sidebar-nav-sub">Banking &amp; Government</span></span>
           </a>
+          <a class="sidebar-nav-item" data-tab="field">
+            <span class="nav-icon">&#128269;</span>
+            <span class="sidebar-label">Field Inspection<span class="sidebar-nav-sub">On-site Assessment</span></span>
+          </a>
         </nav>
 
         <div class="sidebar-footer">
@@ -2202,6 +2294,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <button class="tab-btn active" id="chatTabBtn">AI Agent</button>
             <button class="tab-btn" id="auditorTabBtn">&#128274; Auditor</button>
             <button class="tab-btn" id="idTabBtn">ID Verification</button>
+            <button class="tab-btn" id="fieldTabBtn">Field Inspection</button>
         </div>
 
         <!-- My Day Tab -->
@@ -2586,6 +2679,107 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <div class="tab-footer">{{DEVICE_LABEL}} &mdash; {{MODEL_LABEL}} on {{CHIP_LABEL}} &mdash; All processing happens locally</div>
         </div>
 
+        <!-- Field Inspection Tab -->
+        <div id="field-tab" class="tab-content">
+            <div class="inspection-workspace">
+
+                <!-- Left Panel: Structured Form -->
+                <div class="inspection-form-panel">
+                    <h3>&#128203; Inspection Details</h3>
+
+                    <div class="insp-field">
+                        <label for="inspLocation">Location</label>
+                        <input type="text" id="inspLocation" placeholder="e.g. Building C, 2nd Floor">
+                    </div>
+                    <div class="insp-field">
+                        <label for="inspDateTime">Date / Time</label>
+                        <input type="datetime-local" id="inspDateTime">
+                    </div>
+                    <div class="insp-field">
+                        <label for="inspIssue">Reported Issue</label>
+                        <input type="text" id="inspIssue" placeholder="e.g. Water Staining">
+                    </div>
+                    <div class="insp-field">
+                        <label for="inspSource">Source</label>
+                        <input type="text" id="inspSource" placeholder="e.g. Property Manager Report">
+                    </div>
+
+                    <button class="insp-mic-btn" id="inspMicBtn">
+                        <span class="rec-dot"></span>
+                        &#127908; Speak Inspection Notes
+                    </button>
+                    <button class="insp-mic-btn secondary" id="inspScriptedBtn" style="margin-top:8px; background: rgba(255,255,255,0.1); font-size:0.85em;">
+                        &#9654; Use Scripted Input (Demo)
+                    </button>
+
+                    <div class="insp-transcript" id="inspTranscript"></div>
+                </div>
+
+                <!-- Center Panel: Photo Grid -->
+                <div class="inspection-photo-panel">
+                    <h3 style="margin:0 0 12px 0; font-size:1em; color:rgba(255,255,255,0.7); text-transform:uppercase; letter-spacing:1px;">&#128247; Photo Evidence</h3>
+
+                    <video id="inspCameraPreview" class="camera-live-preview" autoplay playsinline></video>
+                    <canvas id="inspCaptureCanvas" style="display:none;"></canvas>
+
+                    <div class="photo-grid" id="inspPhotoGrid">
+                        <div class="photo-grid-empty" id="inspPhotoEmpty">No photos captured</div>
+                    </div>
+
+                    <div class="photo-capture-controls">
+                        <button class="photo-capture-btn primary" id="inspStartCameraBtn">&#128247; Start Camera</button>
+                        <button class="photo-capture-btn primary" id="inspCapturePhotoBtn" style="display:none;">&#128248; Capture</button>
+                        <button class="photo-capture-btn secondary" id="inspStopCameraBtn" style="display:none;">Stop Camera</button>
+                        <button class="photo-capture-btn secondary" id="inspDemoPhotoBtn">&#128193; Load Demo Photo</button>
+                    </div>
+
+                    <!-- Classification card (appears after photo analysis) -->
+                    <div class="classification-card" id="inspClassCard" style="display:none;">
+                        <div class="cc-category" id="inspClassCategory">--</div>
+                        <div class="cc-row">
+                            <span class="cc-severity" id="inspClassSeverity">--</span>
+                            <div class="cc-confidence">
+                                <div style="font-size:0.8em; color:rgba(255,255,255,0.5); margin-bottom:3px;">Confidence: <span id="inspClassConfPct">0</span>%</div>
+                                <div class="cc-confidence-bar"><div class="cc-confidence-fill" id="inspClassConfBar" style="width:0%"></div></div>
+                            </div>
+                        </div>
+                        <div class="cc-explain" id="inspClassExplain"></div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Findings + Report -->
+                <div class="inspection-report-panel">
+                    <div class="findings-log">
+                        <h3>&#128270; Findings</h3>
+                        <div id="inspFindings">
+                            <div class="finding-item" style="color:rgba(255,255,255,0.3); font-style:italic;">No findings yet. Capture and classify a photo to add findings.</div>
+                        </div>
+                    </div>
+
+                    <button class="insp-generate-btn" id="inspGenerateBtn" disabled>&#128196; Generate Report</button>
+                    <button class="insp-translate-btn" id="inspTranslateBtn" style="display:none;">&#127760; Translate to Spanish</button>
+
+                    <div class="report-draft" id="inspReportDraft" style="display:none;">
+                        <h4>Report Preview</h4>
+                        <div class="report-content" id="inspReportContent">
+                            <div class="report-empty">Report will appear here after generation.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Bar: Tokenomics + Status -->
+                <div class="inspection-bottom-bar">
+                    <div class="insp-status">
+                        <span class="status-dot" id="inspStatusDot"></span>
+                        <span id="inspStatusText">Ready</span>
+                    </div>
+                    <div class="insp-token-count" id="inspTokenCount">0 local tokens &middot; $0.00 cloud cost &middot; 0 bytes transmitted</div>
+                    <div class="insp-privacy">&#128274; 100% Local Processing &mdash; {{CHIP_LABEL}}</div>
+                </div>
+
+            </div>
+        </div>
+
         <footer>
             {{DEVICE_LABEL}} - {{MODEL_LABEL}} on {{CHIP_LABEL}} - All processing happens locally
         </footer>
@@ -2727,7 +2921,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 day:     { tabId: "day-tab",     btnId: "dayTabBtn",     toast: "Same local AI \u2014 now reading your day" },
                 chat:    { tabId: "chat-tab",    btnId: "chatTabBtn",    toast: "Same local AI \u2014 now with execution tools" },
                 auditor: { tabId: "auditor-tab", btnId: "auditorTabBtn", toast: "Same local AI \u2014 structured analysis + smart escalation" },
-                id:      { tabId: "id-tab",      btnId: "idTabBtn",     toast: "Same local AI \u2014 now verifying identity" }
+                id:      { tabId: "id-tab",      btnId: "idTabBtn",     toast: "Same local AI \u2014 now verifying identity" },
+                field:   { tabId: "field-tab",   btnId: "fieldTabBtn",  toast: "Same local AI \u2014 field inspection + on-site assessment" }
             };
             document.querySelectorAll(".sidebar-nav-item").forEach(function(item) {
                 item.addEventListener("click", function() {
