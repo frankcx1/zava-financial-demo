@@ -2144,6 +2144,9 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .insp-mic-btn .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #fff; display: none; }
         .insp-mic-btn.recording .rec-dot { display: inline-block; animation: pulse 1s infinite; }
 
+        .insp-transcript-input { width: 100%; margin-top: 14px; padding: 10px 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 8px; font-size: 0.9em; font-family: inherit; resize: vertical; min-height: 70px; transition: border-color 0.15s; }
+        .insp-transcript-input:focus { outline: none; border-color: #60a5fa; background: rgba(255,255,255,0.12); }
+        .insp-transcript-input::placeholder { color: rgba(255,255,255,0.3); }
         .insp-transcript { margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; font-size: 0.85em; color: rgba(255,255,255,0.6); max-height: 120px; overflow-y: auto; display: none; }
         .insp-transcript.visible { display: block; }
 
@@ -2733,6 +2736,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     <h3>&#128203; Inspection Details</h3>
 
                     <div class="insp-field">
+                        <label for="inspInspector">Inspector</label>
+                        <input type="text" id="inspInspector" placeholder="e.g. Sarah Chen">
+                    </div>
+                    <div class="insp-field">
                         <label for="inspLocation">Location</label>
                         <input type="text" id="inspLocation" placeholder="e.g. Building C, 2nd Floor">
                     </div>
@@ -2749,13 +2756,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         <input type="text" id="inspSource" placeholder="e.g. Property Manager Report">
                     </div>
 
-                    <button class="insp-mic-btn" id="inspMicBtn">
-                        <span class="rec-dot"></span>
-                        &#127908; Speak Inspection Notes
-                    </button>
-                    <button class="insp-mic-btn secondary" id="inspScriptedBtn" style="margin-top:8px; background: rgba(255,255,255,0.1); font-size:0.85em;">
-                        &#9654; Use Scripted Input (Demo)
-                    </button>
+                    <textarea class="insp-transcript-input" id="inspTranscriptInput" rows="4" placeholder="Dictate here (Win+H) or type inspection notes..."></textarea>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button class="insp-mic-btn" id="inspExtractBtn" style="flex:1;">
+                            &#129504; Extract Fields with AI
+                        </button>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:6px;">
+                        <button class="insp-mic-btn secondary" id="inspScriptedBtn" style="flex:1; background: rgba(255,255,255,0.1); font-size:0.85em;">
+                            &#9654; Use Scripted Input (Demo)
+                        </button>
+                    </div>
 
                     <div class="insp-transcript" id="inspTranscript"></div>
                 </div>
@@ -5251,7 +5262,6 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         // ── Field Inspection: Milestone 2 — Voice Capture + Field Extraction ──
         (function() {
-            var inspMicBtn = document.getElementById("inspMicBtn");
             var inspScriptedBtn = document.getElementById("inspScriptedBtn");
             var inspTranscript = document.getElementById("inspTranscript");
             var inspStatusDot = document.getElementById("inspStatusDot");
@@ -5263,6 +5273,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             // Field IDs in order for staggered animation
             var fieldMap = [
+                { key: "inspector_name", elId: "inspInspector" },
                 { key: "location", elId: "inspLocation" },
                 { key: "datetime", elId: "inspDateTime" },
                 { key: "reported_issue", elId: "inspIssue" },
@@ -5333,86 +5344,31 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 });
             }
 
-            // --- Mic button: Web Speech API ---
-            if (inspMicBtn) {
-                // Check for Web Speech API support
-                var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            // --- Extract Fields button: reads from textarea ---
+            var inspExtractBtn = document.getElementById("inspExtractBtn");
+            var inspTranscriptInput = document.getElementById("inspTranscriptInput");
 
-                inspMicBtn.addEventListener("click", function() {
-                    if (isRecording) {
-                        // Stop recording
-                        isRecording = false;
-                        inspMicBtn.classList.remove("recording");
-                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
-                        if (recognition) recognition.stop();
+            if (inspExtractBtn && inspTranscriptInput) {
+                inspExtractBtn.addEventListener("click", function() {
+                    var text = inspTranscriptInput.value.trim();
+                    if (!text) {
+                        setInspStatus("Type or dictate (Win+H) inspection notes first", false);
                         return;
                     }
-
-                    if (!SpeechRecognition) {
-                        setInspStatus("Speech API not available \u2014 use Scripted Input", false);
-                        return;
-                    }
-
-                    recognition = new SpeechRecognition();
-                    recognition.continuous = true;
-                    recognition.interimResults = true;
-                    recognition.lang = "en-US";
-
-                    var fullTranscript = "";
-                    isRecording = true;
-                    inspMicBtn.classList.add("recording");
-                    inspMicBtn.innerHTML = '<span class="rec-dot"></span> Recording... tap to stop';
-                    setInspStatus("Listening...", true);
-
-                    recognition.onresult = function(event) {
-                        var interim = "";
-                        fullTranscript = "";
-                        for (var i = 0; i < event.results.length; i++) {
-                            if (event.results[i].isFinal) {
-                                fullTranscript += event.results[i][0].transcript + " ";
-                            } else {
-                                interim += event.results[i][0].transcript;
-                            }
-                        }
-                        showTranscript(fullTranscript + interim);
-                    };
-
-                    recognition.onend = function() {
-                        isRecording = false;
-                        inspMicBtn.classList.remove("recording");
-                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
-                        if (fullTranscript.trim()) {
-                            extractFields(fullTranscript.trim());
-                        } else {
-                            setInspStatus("No speech detected \u2014 try again or use Scripted Input", false);
-                        }
-                    };
-
-                    recognition.onerror = function(e) {
-                        isRecording = false;
-                        inspMicBtn.classList.remove("recording");
-                        inspMicBtn.innerHTML = '<span class="rec-dot"></span>&#127908; Speak Inspection Notes';
-                        if (e.error === "not-allowed") {
-                            setInspStatus("Microphone access denied", false);
-                        } else if (e.error === "network") {
-                            setInspStatus("Speech API needs network \u2014 use Scripted Input for offline", false);
-                        } else {
-                            setInspStatus("Speech error: " + e.error + " \u2014 use Scripted Input", false);
-                        }
-                    };
-
-                    recognition.start();
+                    showTranscript(text);
+                    extractFields(text);
                 });
             }
 
-            // --- Scripted input fallback (demo safety net) ---
-            if (inspScriptedBtn) {
+            // --- Scripted input (demo safety net) — fills textarea then extracts ---
+            if (inspScriptedBtn && inspTranscriptInput) {
                 inspScriptedBtn.addEventListener("click", function() {
                     var scriptedTranscript = "This is inspector Sarah Chen reporting from Building C, " +
                         "second floor, north corridor. Date is March 3rd 2026, approximately 10:15 AM. " +
                         "We received a property manager report about water staining on the ceiling tiles. " +
                         "There are visible discoloration patterns consistent with a slow leak from the " +
                         "floor above. Recommend checking the plumbing in Unit 3B directly above this location.";
+                    inspTranscriptInput.value = scriptedTranscript;
                     showTranscript(scriptedTranscript);
                     extractFields(scriptedTranscript);
                 });
@@ -5714,6 +5670,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
                 // Collect form fields
                 var fields = {
+                    inspector_name: (document.getElementById("inspInspector") || {}).value || "",
                     location: (document.getElementById("inspLocation") || {}).value || "",
                     datetime: (document.getElementById("inspDateTime") || {}).value || "",
                     reported_issue: (document.getElementById("inspIssue") || {}).value || "",
@@ -5974,9 +5931,9 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             var origPush = null;
             function setupTaskTracking() {
                 // Track speech-to-text and field extraction from Milestone 2
-                var mic = document.getElementById("inspMicBtn");
+                var extractBtn = document.getElementById("inspExtractBtn");
                 var scripted = document.getElementById("inspScriptedBtn");
-                if (mic) mic.addEventListener("click", function() {
+                if (extractBtn) extractBtn.addEventListener("click", function() {
                     addTask("Speech-to-text");
                     addTask("Field extraction");
                 });
@@ -9140,9 +9097,11 @@ def inspection_transcribe():
         "You are a field extraction engine for building inspection reports. "
         "Given a spoken transcript from an inspector, extract structured fields. "
         "Respond ONLY with valid JSON matching this schema:\n"
-        '{"location": string or null, "datetime": string or null, '
-        '"reported_issue": string or null, "source": string or null}\n'
+        '{"inspector_name": string or null, "location": string or null, '
+        '"datetime": string or null, "reported_issue": string or null, '
+        '"source": string or null}\n'
         "Rules:\n"
+        "- inspector_name: the inspector's full name (e.g. \"Sarah Chen\")\n"
         "- location: building, floor, area (e.g. \"Building C, 2nd Floor, North Corridor\")\n"
         "- datetime: ISO 8601 format if possible (e.g. \"2026-03-03T10:15:00\")\n"
         "- reported_issue: short description of the problem (e.g. \"Water Staining\")\n"
@@ -9186,7 +9145,7 @@ def inspection_transcribe():
         except json.JSONDecodeError:
             # Fallback: return raw response as-is with empty fields
             print(f"[INSPECTION] Field extraction JSON parse failed: {raw[:200]}")
-            fields = {"location": None, "datetime": None, "reported_issue": None, "source": None}
+            fields = {"inspector_name": None, "location": None, "datetime": None, "reported_issue": None, "source": None}
 
         # Calculate tokens used
         tokens_used = 0
@@ -9343,7 +9302,9 @@ def inspection_report():
         if f.get('annotations', {}).get('extracted_text'):
             findings_text += f"  Inspector Note: {f['annotations']['extracted_text']}\n"
 
+    inspector_name = fields.get('inspector_name', '')
     inspection_data = (
+        f"Inspector: {inspector_name or 'Not specified'}\n"
         f"Location: {fields.get('location', 'Not specified')}\n"
         f"Date/Time: {fields.get('datetime', 'Not specified')}\n"
         f"Reported Issue: {fields.get('reported_issue', 'Not specified')}\n"
@@ -9444,9 +9405,11 @@ def inspection_report():
                 f'<em>{cls.get("explanation", "")}</em></div>'
             )
 
+        _fb_inspector = fields.get("inspector_name", "")
         fallback_html = (
             f'<h2>Inspection Report</h2>'
-            f'<p><strong>Location:</strong> {fields.get("location", "N/A")} | '
+            f'<p><strong>Inspector:</strong> {_fb_inspector or "N/A"} | '
+            f'<strong>Location:</strong> {fields.get("location", "N/A")} | '
             f'<strong>Date:</strong> {fields.get("datetime", "N/A")}</p>'
             f'<h3>Executive Summary</h3>'
             f'<p>Inspection of {fields.get("location", "the site")} identified '

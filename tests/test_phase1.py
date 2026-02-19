@@ -1642,15 +1642,20 @@ class TestFieldInspectionMilestone1(unittest.TestCase):
     # ── Left panel: Structured form ──
 
     def test_form_fields_present(self):
-        """Location, DateTime, Issue, Source fields exist."""
+        """Inspector, Location, DateTime, Issue, Source fields exist."""
+        self.assertIn('id="inspInspector"', self.html)
         self.assertIn('id="inspLocation"', self.html)
         self.assertIn('id="inspDateTime"', self.html)
         self.assertIn('id="inspIssue"', self.html)
         self.assertIn('id="inspSource"', self.html)
 
-    def test_mic_button_present(self):
-        """Voice capture mic button exists."""
-        self.assertIn('id="inspMicBtn"', self.html)
+    def test_dictation_textarea_present(self):
+        """Dictation textarea for Win+H input exists."""
+        self.assertIn('id="inspTranscriptInput"', self.html)
+
+    def test_extract_button_present(self):
+        """Extract Fields with AI button exists."""
+        self.assertIn('id="inspExtractBtn"', self.html)
 
     def test_scripted_input_fallback(self):
         """Scripted demo input button exists as fallback."""
@@ -1756,7 +1761,7 @@ class TestFieldInspectionMilestone2(unittest.TestCase):
     def test_transcribe_returns_extracted_fields(self):
         """POST /inspection/transcribe extracts structured fields from transcript."""
         mock_resp = self._mock_model_response(
-            '{"location": "Building C, 2nd Floor", "datetime": "2026-03-03T10:15:00", '
+            '{"inspector_name": "Sarah Chen", "location": "Building C, 2nd Floor", "datetime": "2026-03-03T10:15:00", '
             '"reported_issue": "Water Staining", "source": "Property Manager Report"}'
         )
         saved = app_module.client.chat.completions.create.return_value
@@ -1771,6 +1776,7 @@ class TestFieldInspectionMilestone2(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertIn("fields", data)
+        self.assertEqual(data["fields"]["inspector_name"], "Sarah Chen")
         self.assertEqual(data["fields"]["location"], "Building C, 2nd Floor")
         self.assertEqual(data["fields"]["reported_issue"], "Water Staining")
         self.assertIn("tokens_used", data)
@@ -1834,13 +1840,13 @@ class TestFieldInspectionMilestone2(unittest.TestCase):
         self.assertIn("inspector Sarah Chen", html)
         self.assertIn("extractFields", html)
 
-    def test_js_has_speech_recognition_handler(self):
-        """Frontend JS includes Web Speech API mic handler."""
+    def test_js_has_extract_button_handler(self):
+        """Frontend JS includes Extract Fields button handler for dictation textarea."""
         resp = self.client.get("/")
         html = resp.data.decode()
-        self.assertIn("SpeechRecognition", html)
-        self.assertIn("inspMicBtn", html)
-        self.assertIn("recognition.start", html)
+        self.assertIn("inspExtractBtn", html)
+        self.assertIn("inspTranscriptInput", html)
+        self.assertIn("extractFields", html)
 
     def test_js_has_staggered_field_animation(self):
         """Frontend JS includes staggered field population animation."""
@@ -2001,7 +2007,7 @@ class TestFieldInspectionMilestone5(unittest.TestCase):
         app_module.client.chat.completions.create.side_effect = Exception("Model offline")
 
         resp = self.client.post("/inspection/report", json={
-            "fields": {"location": "Site Alpha", "datetime": "2026-02-19"},
+            "fields": {"inspector_name": "Sarah Chen", "location": "Site Alpha", "datetime": "2026-02-19"},
             "findings": [{"classification": {"category": "structural_crack",
                           "severity": "High", "confidence": 78,
                           "explanation": "Crack in load-bearing wall"}}]
@@ -2013,6 +2019,7 @@ class TestFieldInspectionMilestone5(unittest.TestCase):
         data = resp.get_json()
         self.assertIn("report_html", data)
         self.assertIn("Site Alpha", data["report_html"])
+        self.assertIn("Sarah Chen", data["report_html"])
         self.assertEqual(data["risk_rating"], "High")
         self.assertEqual(data["tokens_used"], 0)
 
