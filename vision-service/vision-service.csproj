@@ -5,6 +5,8 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Platform>x64</Platform>
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <!-- Unpackaged for dev; switch to MSIX when LAF token arrives -->
+    <!-- PFN (for LAF): Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc -->
     <WindowsPackageType>None</WindowsPackageType>
     <EnableMsixTooling>false</EnableMsixTooling>
     <EnableCoreMrtTooling>false</EnableCoreMrtTooling>
@@ -13,7 +15,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Experimental channel: no LAF token required for Phi Silica APIs -->
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250127003-experimental3" />
   </ItemGroup>
 
