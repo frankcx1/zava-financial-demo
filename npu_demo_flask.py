@@ -5673,6 +5673,109 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             });
         })();
 
+        // ── Field Inspection: Milestone 6 — Translation ──
+        (function() {
+            var translateBtn = document.getElementById("inspTranslateBtn");
+            var reportDraft = document.getElementById("inspReportDraft");
+            var reportContent = document.getElementById("inspReportContent");
+            var statusDot = document.getElementById("inspStatusDot");
+            var statusText = document.getElementById("inspStatusText");
+            var tokenCount = document.getElementById("inspTokenCount");
+
+            if (!translateBtn) return;
+
+            // Track language state
+            var currentLang = "en";
+            var originalHtml = "";
+            var translatedHtml = "";
+
+            function setStatus(text, processing) {
+                if (statusText) statusText.textContent = text;
+                if (statusDot) statusDot.classList.toggle("processing", !!processing);
+            }
+
+            translateBtn.addEventListener("click", function() {
+                // Toggle back to English if already translated
+                if (currentLang === "es") {
+                    if (reportContent) reportContent.innerHTML = originalHtml;
+                    translateBtn.textContent = "\ud83c\udf10 Translate to Spanish";
+                    currentLang = "en";
+                    setStatus("Switched back to English", false);
+                    return;
+                }
+
+                // Get current report HTML
+                var reportData = window._inspReportData;
+                if (!reportData || !reportData.report_html) {
+                    setStatus("No report to translate", false);
+                    return;
+                }
+
+                // Save original before translating
+                originalHtml = reportData.report_html;
+
+                translateBtn.disabled = true;
+                translateBtn.textContent = "\u23f3 Translating...";
+                setStatus("Translating report to Spanish with local AI...", true);
+
+                fetch("/inspection/translate", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        report_html: originalHtml,
+                        target_language: "Spanish"
+                    })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        setStatus("Translation error: " + data.error, false);
+                        translateBtn.disabled = false;
+                        translateBtn.textContent = "\ud83c\udf10 Translate to Spanish";
+                        return;
+                    }
+
+                    translatedHtml = data.translated_html;
+
+                    // Brief side-by-side flash (500ms) then settle on translation
+                    if (reportContent) {
+                        reportContent.innerHTML =
+                            '<div style="display:flex;gap:12px;opacity:0.8;">' +
+                            '<div style="flex:1;border-right:1px solid rgba(255,255,255,0.2);padding-right:12px;">' +
+                            '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:4px;">EN</div>' +
+                            originalHtml + '</div>' +
+                            '<div style="flex:1;padding-left:12px;">' +
+                            '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:4px;">ES</div>' +
+                            translatedHtml + '</div></div>';
+
+                        setTimeout(function() {
+                            reportContent.innerHTML = translatedHtml;
+                        }, 500);
+                    }
+
+                    currentLang = "es";
+                    translateBtn.disabled = false;
+                    translateBtn.textContent = "\ud83c\udf10 Switch to English";
+
+                    var timeLabel = data.inference_time ? " (" + data.inference_time + "s)" : "";
+                    setStatus("Translated to Spanish" + timeLabel + " \u2014 no cloud API call", false);
+
+                    // Update token count
+                    if (data.tokens_used && tokenCount) {
+                        var prev = parseInt(tokenCount.textContent) || 0;
+                        var total = prev + data.tokens_used;
+                        tokenCount.textContent = total + " local tokens \u00b7 $0.00 cloud cost \u00b7 0 bytes transmitted";
+                    }
+                })
+                .catch(function(err) {
+                    console.error("Translation failed:", err);
+                    setStatus("Translation failed", false);
+                    translateBtn.disabled = false;
+                    translateBtn.textContent = "\ud83c\udf10 Translate to Spanish";
+                });
+            });
+        })();
+
     </script>
 
     <!-- File Picker Modal for Review & Summarize -->
@@ -9087,6 +9190,73 @@ def inspection_report():
             "summary": f"Inspection identified {len(findings)} finding(s) at {fields.get('location', 'N/A')}.",
             "risk_rating": highest,
             "next_steps": ["Schedule follow-up inspection", "Document for insurance", "Engage specialist contractor"],
+            "tokens_used": 0,
+            "inference_time": 0,
+        })
+
+
+@app.route('/inspection/translate', methods=['POST'])
+def inspection_translate():
+    """Translate an inspection report into a target language."""
+    data = request.json or {}
+    report_html = data.get('report_html', '')
+    target_language = data.get('target_language', 'Spanish')
+
+    if not report_html.strip():
+        return jsonify({"error": "No report to translate"}), 400
+
+    model = DEFAULT_MODEL
+
+    system_prompt = (
+        f"Translate the following inspection report into {target_language}. "
+        "Maintain the exact same structure, formatting, and section organization. "
+        f"Use professional {target_language} appropriate for a construction/inspection context. "
+        "Output as clean HTML matching the source structure. No markdown — only HTML."
+    )
+
+    try:
+        _call_start = _time.time()
+        _translate_limit = 6000 if SILICON == "qualcomm" else 2000
+        response = foundry_chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": report_html[:_translate_limit]},
+            ],
+            max_tokens=800 if SILICON != "qualcomm" else 1200,
+            temperature=0.3,
+        )
+        elapsed = _time.time() - _call_start
+        _track_model_call(response, elapsed)
+
+        translated = (response.choices[0].message.content or "").strip()
+
+        tokens_used = 0
+        if hasattr(response, 'usage') and response.usage:
+            tokens_used = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
+        else:
+            tokens_used = 500
+
+        return jsonify({
+            "translated_html": translated,
+            "source_language": "English",
+            "target_language": target_language,
+            "tokens_used": tokens_used,
+            "inference_time": round(elapsed, 1),
+        })
+
+    except Exception as e:
+        print(f"[INSPECTION] Translation error: {e}")
+        # Hardcoded fallback: wrap original with a note
+        fallback = (
+            f'<div style="padding:8px; background:rgba(255,200,0,0.1); border-radius:6px; margin-bottom:12px;">'
+            f'<em>Traducci\u00f3n autom\u00e1tica no disponible \u2014 modelo fuera de l\u00ednea. '
+            f'Mostrando informe original.</em></div>{report_html}'
+        )
+        return jsonify({
+            "translated_html": fallback,
+            "source_language": "English",
+            "target_language": target_language,
             "tokens_used": 0,
             "inference_time": 0,
         })

@@ -2110,6 +2110,124 @@ class TestFieldInspectionMilestone5(unittest.TestCase):
         self.assertIn("Regenerate Report", html)
 
 
+class TestFieldInspectionMilestone6(unittest.TestCase):
+    """Milestone 6: Translation — backend + frontend."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = app.test_client()
+
+    # ── Backend: /inspection/translate ──
+
+    def test_translate_returns_translated_html(self):
+        """Translate endpoint returns translated_html with language metadata."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            '<h2>Informe de Inspecci\u00f3n</h2>'
+            '<p>Da\u00f1o por agua encontrado en Edificio C.</p>'
+        )
+        mock_response.usage = MagicMock(prompt_tokens=200, completion_tokens=250)
+        app_module.client.chat.completions.create.return_value = mock_response
+
+        resp = self.client.post("/inspection/translate", json={
+            "report_html": "<h2>Inspection Report</h2><p>Water damage found at Building C.</p>",
+            "target_language": "Spanish"
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("translated_html", data)
+        self.assertIn("Inspecci\u00f3n", data["translated_html"])
+        self.assertEqual(data["source_language"], "English")
+        self.assertEqual(data["target_language"], "Spanish")
+        self.assertIn("tokens_used", data)
+        self.assertIn("inference_time", data)
+
+    def test_translate_fallback_on_model_error(self):
+        """When model raises an exception, fallback includes original report."""
+        app_module.client.chat.completions.create.side_effect = Exception("Model offline")
+
+        original_html = "<h2>Inspection Report</h2><p>Findings here.</p>"
+        resp = self.client.post("/inspection/translate", json={
+            "report_html": original_html,
+            "target_language": "Spanish"
+        })
+        app_module.client.chat.completions.create.side_effect = None
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("translated_html", data)
+        # Fallback should contain the original HTML
+        self.assertIn("Findings here", data["translated_html"])
+        # Fallback should contain Spanish unavailable notice
+        self.assertIn("no disponible", data["translated_html"])
+        self.assertEqual(data["tokens_used"], 0)
+
+    def test_translate_rejects_empty_report(self):
+        """Translate endpoint returns 400 when report_html is empty."""
+        resp = self.client.post("/inspection/translate", json={
+            "report_html": "",
+            "target_language": "Spanish"
+        })
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json()
+        self.assertIn("error", data)
+
+    def test_translate_rejects_missing_report(self):
+        """Translate endpoint returns 400 when report_html key is absent."""
+        resp = self.client.post("/inspection/translate", json={
+            "target_language": "Spanish"
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_translate_defaults_to_spanish(self):
+        """Translate endpoint defaults to Spanish when target_language not specified."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '<h2>Informe</h2>'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=100)
+        app_module.client.chat.completions.create.return_value = mock_response
+
+        resp = self.client.post("/inspection/translate", json={
+            "report_html": "<h2>Report</h2>"
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["target_language"], "Spanish")
+
+    # ── Frontend JS ──
+
+    def test_js_has_translate_handler(self):
+        """Frontend JS includes translation click handler and fetch call."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspTranslateBtn", html)
+        self.assertIn("/inspection/translate", html)
+        self.assertIn("Translating report to Spanish with local AI", html)
+
+    def test_js_has_language_toggle(self):
+        """Frontend JS supports toggling between EN and ES."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("Switch to English", html)
+        self.assertIn("currentLang", html)
+
+    def test_js_has_side_by_side_flash(self):
+        """Frontend JS includes brief EN|ES side-by-side flash before settling."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        # Side-by-side flash uses flex layout with EN/ES labels
+        self.assertIn("display:flex", html)
+        self.assertIn(">EN<", html)
+        self.assertIn(">ES<", html)
+
+    def test_js_shows_no_cloud_status(self):
+        """Frontend JS status message confirms no cloud API call."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("no cloud API call", html)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)
