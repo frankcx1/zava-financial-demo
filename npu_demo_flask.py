@@ -5592,6 +5592,87 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             }
         })();
 
+        // ── Field Inspection: Milestone 5 — Report Generation ──
+        (function() {
+            var generateBtn = document.getElementById("inspGenerateBtn");
+            var translateBtn = document.getElementById("inspTranslateBtn");
+            var reportDraft = document.getElementById("inspReportDraft");
+            var reportContent = document.getElementById("inspReportContent");
+            var statusDot = document.getElementById("inspStatusDot");
+            var statusText = document.getElementById("inspStatusText");
+            var tokenCount = document.getElementById("inspTokenCount");
+
+            if (!generateBtn) return;
+
+            function setStatus(text, processing) {
+                if (statusText) statusText.textContent = text;
+                if (statusDot) statusDot.classList.toggle("processing", !!processing);
+            }
+
+            generateBtn.addEventListener("click", function() {
+                var findings = window._inspFindings || [];
+                if (findings.length === 0) {
+                    setStatus("No findings to report", false);
+                    return;
+                }
+
+                // Collect form fields
+                var fields = {
+                    location: (document.getElementById("inspLocation") || {}).value || "",
+                    datetime: (document.getElementById("inspDateTime") || {}).value || "",
+                    reported_issue: (document.getElementById("inspIssue") || {}).value || "",
+                    source: (document.getElementById("inspSource") || {}).value || ""
+                };
+
+                generateBtn.disabled = true;
+                generateBtn.textContent = "\u23f3 Generating...";
+                setStatus("Generating inspection report with local AI...", true);
+
+                fetch("/inspection/report", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({fields: fields, findings: findings})
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) {
+                        setStatus("Report error: " + data.error, false);
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = "\ud83d\udcc4 Generate Report";
+                        return;
+                    }
+
+                    // Show report
+                    if (reportContent) reportContent.innerHTML = data.report_html || "<p>No report generated.</p>";
+                    if (reportDraft) reportDraft.style.display = "block";
+                    if (translateBtn) translateBtn.style.display = "inline-block";
+
+                    // Store for translation (Milestone 6)
+                    window._inspReportData = data;
+
+                    // Update status
+                    var riskLabel = data.risk_rating || "Moderate";
+                    setStatus("Report generated \u2014 Risk: " + riskLabel + " (" + (data.inference_time || 0) + "s)", false);
+
+                    // Update token count
+                    if (data.tokens_used && tokenCount) {
+                        var prev = parseInt(tokenCount.textContent) || 0;
+                        var total = prev + data.tokens_used;
+                        tokenCount.textContent = total + " local tokens \u00b7 $0.00 cloud cost \u00b7 0 bytes transmitted";
+                    }
+
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = "\ud83d\udcc4 Regenerate Report";
+                })
+                .catch(function(err) {
+                    console.error("Report generation failed:", err);
+                    setStatus("Report generation failed", false);
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = "\ud83d\udcc4 Generate Report";
+                });
+            });
+        })();
+
     </script>
 
     <!-- File Picker Modal for Review & Summarize -->
@@ -8855,6 +8936,160 @@ def inspection_classify():
             return jsonify(result)
 
     return jsonify({"error": "No image or demo_type provided"}), 400
+
+
+@app.route('/inspection/report', methods=['POST'])
+def inspection_report():
+    """Generate a professional inspection report from collected fields and findings."""
+    data = request.json or {}
+    fields = data.get('fields', {})
+    findings = data.get('findings', [])
+
+    if not findings:
+        return jsonify({"error": "No findings to report"}), 400
+
+    model = DEFAULT_MODEL
+
+    # Build structured input for the model
+    findings_text = ""
+    for i, f in enumerate(findings, 1):
+        cls = f.get('classification', {})
+        findings_text += (
+            f"\nFinding #{i}:\n"
+            f"  Category: {cls.get('category', 'Unknown')}\n"
+            f"  Severity: {cls.get('severity', 'Unknown')}\n"
+            f"  Confidence: {cls.get('confidence', 0)}%\n"
+            f"  Explanation: {cls.get('explanation', 'N/A')}\n"
+        )
+        if f.get('annotations', {}).get('extracted_text'):
+            findings_text += f"  Inspector Note: {f['annotations']['extracted_text']}\n"
+
+    inspection_data = (
+        f"Location: {fields.get('location', 'Not specified')}\n"
+        f"Date/Time: {fields.get('datetime', 'Not specified')}\n"
+        f"Reported Issue: {fields.get('reported_issue', 'Not specified')}\n"
+        f"Source: {fields.get('source', 'Not specified')}\n"
+        f"\nFindings ({len(findings)} total):{findings_text}"
+    )
+
+    system_prompt = (
+        "You are an inspection report generator. Given structured inspection data, "
+        "produce a professional inspection report as clean HTML. Include:\n"
+        "1. Executive summary (2-3 sentences)\n"
+        "2. Finding details with severity and confidence\n"
+        "3. Overall risk rating (Low, Moderate, High, or Critical)\n"
+        "4. Recommended next steps (2-4 bullet points)\n\n"
+        "Use these HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>.\n"
+        "Use class=\"risk-high\" on the risk rating if High/Critical, "
+        "class=\"risk-moderate\" if Moderate, class=\"risk-low\" if Low.\n"
+        "Keep language professional and concise. No markdown — only HTML."
+    )
+
+    try:
+        _call_start = _time.time()
+        _report_limit = 6000 if SILICON == "qualcomm" else 2000
+        response = foundry_chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": inspection_data[:_report_limit]},
+            ],
+            max_tokens=800,
+            temperature=0.3,
+        )
+        elapsed = _time.time() - _call_start
+        _track_model_call(response, elapsed)
+
+        report_html = (response.choices[0].message.content or "").strip()
+
+        # Extract summary and risk rating from the generated HTML
+        summary = ""
+        risk_rating = "Moderate"
+
+        # Try to pull summary from first paragraph
+        import re as _re
+        summary_match = _re.search(r'<p>(.*?)</p>', report_html, _re.DOTALL)
+        if summary_match:
+            summary = _re.sub(r'<[^>]+>', '', summary_match.group(1)).strip()
+
+        # Try to detect risk rating from the content
+        report_lower = report_html.lower()
+        if 'critical' in report_lower and ('risk' in report_lower or 'rating' in report_lower):
+            risk_rating = "Critical"
+        elif 'high' in report_lower and ('risk' in report_lower or 'rating' in report_lower):
+            risk_rating = "High"
+        elif 'low' in report_lower and ('risk' in report_lower or 'rating' in report_lower):
+            risk_rating = "Low"
+
+        # Extract next steps from list items
+        next_steps = _re.findall(r'<li>(.*?)</li>', report_html, _re.DOTALL)
+        next_steps = [_re.sub(r'<[^>]+>', '', s).strip() for s in next_steps[-4:]]
+
+        tokens_used = 0
+        if hasattr(response, 'usage') and response.usage:
+            tokens_used = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
+        else:
+            tokens_used = 500
+
+        return jsonify({
+            "report_html": report_html,
+            "report_text": _re.sub(r'<[^>]+>', '', report_html).strip(),
+            "summary": summary,
+            "risk_rating": risk_rating,
+            "next_steps": next_steps,
+            "tokens_used": tokens_used,
+            "inference_time": round(elapsed, 1),
+        })
+
+    except Exception as e:
+        print(f"[INSPECTION] Report generation error: {e}")
+        # Hardcoded fallback report
+        severity_counts = {}
+        for f in findings:
+            sev = f.get('classification', {}).get('severity', 'Unknown')
+            severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+        highest = "Moderate"
+        for s in ["Critical", "High", "Moderate", "Low"]:
+            if severity_counts.get(s, 0) > 0:
+                highest = s
+                break
+
+        fallback_findings_html = ""
+        for i, f in enumerate(findings, 1):
+            cls = f.get('classification', {})
+            fallback_findings_html += (
+                f'<div style="margin:10px 0; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px;">'
+                f'<strong>Finding #{i}: {cls.get("category", "Unknown")}</strong><br>'
+                f'Severity: {cls.get("severity", "?")} | Confidence: {cls.get("confidence", 0)}%<br>'
+                f'<em>{cls.get("explanation", "")}</em></div>'
+            )
+
+        fallback_html = (
+            f'<h2>Inspection Report</h2>'
+            f'<p><strong>Location:</strong> {fields.get("location", "N/A")} | '
+            f'<strong>Date:</strong> {fields.get("datetime", "N/A")}</p>'
+            f'<h3>Executive Summary</h3>'
+            f'<p>Inspection of {fields.get("location", "the site")} identified '
+            f'{len(findings)} finding(s). Reported issue: {fields.get("reported_issue", "N/A")}. '
+            f'Overall risk rating: {highest}.</p>'
+            f'<h3>Findings</h3>{fallback_findings_html}'
+            f'<h3>Risk Rating: {highest}</h3>'
+            f'<h3>Recommended Next Steps</h3>'
+            f'<ul><li>Schedule follow-up inspection within 48 hours</li>'
+            f'<li>Document findings for insurance records</li>'
+            f'<li>Engage specialist contractor for remediation assessment</li></ul>'
+        )
+
+        return jsonify({
+            "report_html": fallback_html,
+            "report_text": f"Inspection at {fields.get('location', 'N/A')}: {len(findings)} findings, risk: {highest}",
+            "summary": f"Inspection identified {len(findings)} finding(s) at {fields.get('location', 'N/A')}.",
+            "risk_rating": highest,
+            "next_steps": ["Schedule follow-up inspection", "Document for insurance", "Engage specialist contractor"],
+            "tokens_used": 0,
+            "inference_time": 0,
+        })
 
 
 @app.route('/health')

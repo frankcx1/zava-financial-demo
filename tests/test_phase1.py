@@ -1955,6 +1955,161 @@ class TestFieldInspectionMilestone3(unittest.TestCase):
         self.assertIn("inspFindings", html)
 
 
+class TestFieldInspectionMilestone5(unittest.TestCase):
+    """Milestone 5: Report Generation — backend + frontend."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = app.test_client()
+
+    # ── Backend: /inspection/report ──
+
+    def test_report_returns_html_and_metadata(self):
+        """Report endpoint returns report_html, summary, risk_rating, next_steps."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = (
+            '<h2>Inspection Report</h2>'
+            '<p>Water damage found at Building C requiring immediate remediation.</p>'
+            '<h3>Risk Rating: High</h3>'
+            '<ul><li>Schedule follow-up inspection</li><li>Contact remediation team</li></ul>'
+        )
+        mock_response.usage = MagicMock(prompt_tokens=200, completion_tokens=300)
+        app_module.client.chat.completions.create.return_value = mock_response
+
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Building C", "datetime": "2026-02-19 10:00",
+                        "reported_issue": "Water damage", "source": "Tenant complaint"},
+            "findings": [{"classification": {"category": "water_damage",
+                          "severity": "Moderate", "confidence": 82,
+                          "explanation": "Active water damage detected"}}]
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("report_html", data)
+        self.assertIn("Inspection Report", data["report_html"])
+        self.assertIn("summary", data)
+        self.assertIn("risk_rating", data)
+        self.assertEqual(data["risk_rating"], "High")
+        self.assertIn("next_steps", data)
+        self.assertGreater(len(data["next_steps"]), 0)
+        self.assertIn("tokens_used", data)
+        self.assertEqual(data["tokens_used"], 500)
+
+    def test_report_fallback_on_model_error(self):
+        """When model raises an exception, fallback report is generated."""
+        app_module.client.chat.completions.create.side_effect = Exception("Model offline")
+
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Site Alpha", "datetime": "2026-02-19"},
+            "findings": [{"classification": {"category": "structural_crack",
+                          "severity": "High", "confidence": 78,
+                          "explanation": "Crack in load-bearing wall"}}]
+        })
+        # Reset side_effect for other tests
+        app_module.client.chat.completions.create.side_effect = None
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("report_html", data)
+        self.assertIn("Site Alpha", data["report_html"])
+        self.assertEqual(data["risk_rating"], "High")
+        self.assertEqual(data["tokens_used"], 0)
+
+    def test_report_rejects_empty_findings(self):
+        """Report endpoint returns 400 when no findings provided."""
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Building A"},
+            "findings": []
+        })
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json()
+        self.assertIn("error", data)
+
+    def test_report_rejects_missing_findings(self):
+        """Report endpoint returns 400 when findings key is absent."""
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Building A"}
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_report_multiple_findings_with_severity_counts(self):
+        """Fallback report correctly identifies highest severity from multiple findings."""
+        app_module.client.chat.completions.create.side_effect = Exception("Model offline")
+
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Warehouse B"},
+            "findings": [
+                {"classification": {"category": "trip_hazard", "severity": "Low",
+                                    "confidence": 85, "explanation": "Minor trip hazard"}},
+                {"classification": {"category": "electrical_hazard", "severity": "Critical",
+                                    "confidence": 91, "explanation": "Exposed wiring"}},
+                {"classification": {"category": "water_damage", "severity": "Moderate",
+                                    "confidence": 82, "explanation": "Water stains"}},
+            ]
+        })
+        app_module.client.chat.completions.create.side_effect = None
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["risk_rating"], "Critical")
+        self.assertIn("3 finding", data["report_html"])
+
+    def test_report_includes_inference_time(self):
+        """Successful report includes inference_time field."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '<h2>Report</h2><p>Summary.</p>'
+        mock_response.usage = MagicMock(prompt_tokens=100, completion_tokens=100)
+        app_module.client.chat.completions.create.return_value = mock_response
+
+        resp = self.client.post("/inspection/report", json={
+            "fields": {"location": "Test Site"},
+            "findings": [{"classification": {"category": "mold", "severity": "High",
+                          "confidence": 88, "explanation": "Mold detected"}}]
+        })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("inference_time", data)
+        self.assertIsInstance(data["inference_time"], float)
+
+    # ── Frontend JS ──
+
+    def test_js_has_report_generation_handler(self):
+        """Frontend JS includes report generation click handler."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspGenerateBtn", html)
+        self.assertIn("/inspection/report", html)
+        self.assertIn("Generating inspection report", html)
+
+    def test_js_has_report_draft_display(self):
+        """Frontend JS populates report draft area and shows translate button."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspReportDraft", html)
+        self.assertIn("inspReportContent", html)
+        self.assertIn("inspTranslateBtn", html)
+        self.assertIn("_inspReportData", html)
+
+    def test_js_collects_form_fields(self):
+        """Frontend JS collects all four form fields for report payload."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("inspLocation", html)
+        self.assertIn("inspDateTime", html)
+        self.assertIn("inspIssue", html)
+        self.assertIn("inspSource", html)
+
+    def test_js_updates_status_during_generation(self):
+        """Frontend JS updates status bar during report generation."""
+        resp = self.client.get("/")
+        html = resp.data.decode()
+        self.assertIn("Generating inspection report with local AI", html)
+        self.assertIn("Report generated", html)
+        self.assertIn("Regenerate Report", html)
+
+
 if __name__ == "__main__":
     # Run with verbose output
     unittest.main(verbosity=2)
