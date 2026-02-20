@@ -32,8 +32,9 @@ public static class VisionClassifier
     // PFN: Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc
     private const string LafFeatureId = "com.microsoft.windows.ai.languagemodel";
     private const string LafToken = "NaE80gqZbJGQ6lFjn75P/g==";
+    // Attestation uses the actual publisher ID hash from the installed MSIX
     private const string LafAttestation =
-        "5z9edc3e9tzrc has registered their use of " +
+        "r0xr04974zwaa has registered their use of " +
         "com.microsoft.windows.ai.languagemodel with Microsoft " +
         "and agrees to the terms of use.";
 
@@ -41,61 +42,72 @@ public static class VisionClassifier
     private static ImageDescriptionGenerator? _generator;
 #endif
 
+    private static readonly string LogPath = @"C:\temp\vision-service-init.log";
+
+    private static void Log(string msg)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
+        Console.WriteLine(line);
+        try { File.AppendAllText(LogPath, line + Environment.NewLine); } catch { }
+    }
+
     public static async Task InitializeAsync()
     {
 #if WINDOWS
         try
         {
+            Log($"Init starting. Log file: {LogPath}");
+
             // Unlock Phi Silica via LAF token (required for packaged apps)
             try
             {
                 var access = Windows.ApplicationModel.LimitedAccessFeatures
                     .TryUnlockFeature(LafFeatureId, LafToken, LafAttestation);
-                Console.WriteLine($"[VisionClassifier] LAF unlock status: {access.Status}");
+                Log($"[VisionClassifier] LAF unlock status: {access.Status}");
                 if (access.Status != Windows.ApplicationModel.LimitedAccessFeatureStatus.Available &&
                     access.Status != Windows.ApplicationModel.LimitedAccessFeatureStatus.AvailableWithoutToken)
                 {
-                    Console.WriteLine($"[VisionClassifier] LAF token not accepted (status: {access.Status})");
-                    Console.WriteLine("[VisionClassifier] Continuing anyway — API may still work on experimental channel");
+                    Log($"[VisionClassifier] LAF token not accepted (status: {access.Status})");
+                    Log("[VisionClassifier] Continuing anyway — API may still work on experimental channel");
                 }
             }
             catch (Exception lafEx)
             {
-                Console.WriteLine($"[VisionClassifier] LAF unlock failed: {lafEx.Message}");
-                Console.WriteLine("[VisionClassifier] Continuing — may work without token on experimental channel");
+                Log($"[VisionClassifier] LAF unlock failed: {lafEx.Message}");
+                Log("[VisionClassifier] Continuing — may work without token on experimental channel");
             }
 
             // Check if ImageDescriptionGenerator is available on this device
             var readyState = ImageDescriptionGenerator.GetReadyState();
-            Console.WriteLine($"[VisionClassifier] GetReadyState: {readyState}");
+            Log($"[VisionClassifier] GetReadyState: {readyState}");
             if (readyState == AIFeatureReadyState.EnsureNeeded)
             {
-                Console.WriteLine("[VisionClassifier] Model not ready, calling EnsureReadyAsync...");
+                Log("[VisionClassifier] Model not ready, calling EnsureReadyAsync...");
                 var deployResult = await ImageDescriptionGenerator.EnsureReadyAsync();
-                Console.WriteLine($"[VisionClassifier] EnsureReadyAsync completed (Status: {deployResult.Status})");
+                Log($"[VisionClassifier] EnsureReadyAsync completed (Status: {deployResult.Status})");
                 if (deployResult.Status != AIFeatureReadyResultState.Success)
                 {
-                    Console.WriteLine($"[VisionClassifier] EnsureReadyAsync failed: {deployResult.ExtendedError?.Message}");
+                    Log($"[VisionClassifier] EnsureReadyAsync failed: {deployResult.ExtendedError?.Message}");
                     IsAvailable = false;
                     return;
                 }
             }
             else if (readyState == AIFeatureReadyState.NotSupportedOnCurrentSystem)
             {
-                Console.WriteLine("[VisionClassifier] Not supported on this system");
+                Log("[VisionClassifier] Not supported on this system");
                 IsAvailable = false;
                 return;
             }
 
             _generator = await ImageDescriptionGenerator.CreateAsync();
             IsAvailable = true;
-            Console.WriteLine("[VisionClassifier] Phi Silica Vision initialized successfully");
+            Log("[VisionClassifier] Phi Silica Vision initialized successfully");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[VisionClassifier] Initialization failed: {ex.Message}");
-            Console.WriteLine("[VisionClassifier] This is expected if Phi Silica model is not installed");
-            Console.WriteLine("[VisionClassifier] or LAF token is not configured.");
+            Log($"[VisionClassifier] Initialization failed: {ex.Message}");
+            Log($"[VisionClassifier] Exception type: {ex.GetType().FullName}");
+            Log($"[VisionClassifier] Stack trace: {ex.StackTrace}");
             IsAvailable = false;
         }
 #else
