@@ -100,13 +100,15 @@ On-site assessment copilot for MWC Barcelona demo (March 2-5, 2026). Seven-miles
 - Status bar shared: `inspStatusDot`, `inspStatusText`, `inspTokenCount`
 
 **Vision Service** (`vision-service/`):
-- C# ASP.NET Core on localhost:5100, wraps Phi Silica `ImageDescriptionGenerator` (Windows App SDK 1.7 experimental3)
+- C# ASP.NET Core on localhost:5100, wraps Phi Silica `ImageDescriptionGenerator` (Windows App SDK 1.8 stable)
 - Endpoints: `/health`, `/describe`, `/classify`, `/extract-text`
-- `ImageDescriptionGenerator` is in `Microsoft.Windows.AI.Generative` namespace (not Imaging)
-- `ImageBuffer` is in `Microsoft.Graphics.Imaging`
-- LAF token integrated, PFN: `Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc`
-- Awaiting confirmation from Phi Silica team on feature ID for vision API + MSIX packaging requirement
-- Currently runs unpackaged; `Package.appxmanifest` and assets ready for MSIX switch
+- `ImageDescriptionGenerator` is in `Microsoft.Windows.AI.Imaging` namespace (moved from `Generative` in exp1)
+- `ContentFilterOptions` is in `Microsoft.Windows.AI.ContentSafety` (renamed from `ContentModeration` in exp1)
+- `ImageBuffer` is in `Microsoft.Graphics.Imaging`, factory method: `CreateForSoftwareBitmap()`
+- MSIX-packaged with `systemAIModels` capability, PFN: `Microsoft.NPUDemo.VisionService_r0xr04974zwaa`
+- LAF token integrated; awaiting corrected token for current PFN from Microsoft contact
+- Self-signed cert `CN=FrankBu` (thumbprint: `D105059461CAEB607A40723E92CBDFB91917A570`)
+- Build/sign/install scripts at `C:\temp\rebuild-msix.ps1`, launch via `C:\temp\launch-vision.ps1`
 
 ## Security Measures
 

@@ -2787,6 +2787,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         <button class="photo-capture-btn primary" id="inspStartCameraBtn">&#128247; Start Camera</button>
                         <button class="photo-capture-btn primary" id="inspCapturePhotoBtn" style="display:none;">&#128248; Capture</button>
                         <button class="photo-capture-btn secondary" id="inspStopCameraBtn" style="display:none;">Stop Camera</button>
+                        <button class="photo-capture-btn secondary" id="inspFlipCameraBtn" style="display:none;">&#128260; Flip</button>
                         <button class="photo-capture-btn secondary" id="inspDemoPhotoBtn">&#128193; Load Demo Photo</button>
                     </div>
 
@@ -2801,6 +2802,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             </div>
                         </div>
                         <div class="cc-explain" id="inspClassExplain"></div>
+                        <div id="inspClassSource" style="display:none; font-size:0.75em; color:rgba(255,255,255,0.4); margin-top:6px; font-style:italic;"></div>
                     </div>
                 </div>
 
@@ -5445,6 +5447,19 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     inspClassCard.className = "classification-card " + confClass;
 
                     document.getElementById("inspClassExplain").textContent = result.explanation || "";
+
+                    // Show analysis source (Phi Silica Vision vs preset vs text fallback)
+                    var sourceEl = document.getElementById("inspClassSource");
+                    if (sourceEl) {
+                        var sourceLabel = {
+                            "phi_silica_vision": "Phi Silica Vision on NPU",
+                            "demo_preset": "Demo Preset",
+                            "text_model_fallback": "Phi-4 Mini (text)",
+                            "hardcoded_fallback": "Demo Preset"
+                        }[result.source] || "";
+                        sourceEl.textContent = sourceLabel;
+                        sourceEl.style.display = sourceLabel ? "" : "none";
+                    }
                 }
 
                 // Add severity badge to photo thumbnail
@@ -5510,7 +5525,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     return;
                 }
 
-                // Upload image for classification
+                // Upload image for real classification (Phi Silica Vision on NPU)
+                setInspStatus3("Classifying with Phi Silica Vision on NPU...", true);
                 var blob = dataURLtoBlob(dataUrl);
                 var formData = new FormData();
                 formData.append("image", blob, "capture.jpg");
@@ -5525,7 +5541,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     showClassification(result, thumb);
                     addFinding(result, dataUrl);
                     updateInspTokens3(result.tokens_used || 0);
-                    setInspStatus3("Classification complete: " + result.category, false);
+                    var src = result.source === "phi_silica_vision" ? " via Phi Silica Vision" : "";
+                    setInspStatus3("Classification complete: " + result.category + src, false);
                     if (window._inspCheckEscalation) window._inspCheckEscalation(result, dataUrl);
                 })
                 .catch(function(e) {
@@ -5543,23 +5560,39 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             }
 
             // --- Camera controls ---
+            var inspFacingMode = "user"; // default to front camera for Surface Pro demo
+            var inspFlipCameraBtn = document.getElementById("inspFlipCameraBtn");
+
+            function startInspCamera() {
+                navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: inspFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                })
+                .then(function(stream) {
+                    inspCameraStream = stream;
+                    inspCameraPreview.srcObject = stream;
+                    inspCameraPreview.classList.add("active");
+                    inspStartCameraBtn.style.display = "none";
+                    inspCapturePhotoBtn.style.display = "";
+                    inspStopCameraBtn.style.display = "";
+                    if (inspFlipCameraBtn) inspFlipCameraBtn.style.display = "";
+                    setInspStatus3("Camera active \u2014 tap Capture", false);
+                })
+                .catch(function(err) {
+                    setInspStatus3("Camera error: " + err.message, false);
+                });
+            }
+
             if (inspStartCameraBtn) {
-                inspStartCameraBtn.addEventListener("click", function() {
-                    navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-                    })
-                    .then(function(stream) {
-                        inspCameraStream = stream;
-                        inspCameraPreview.srcObject = stream;
-                        inspCameraPreview.classList.add("active");
-                        inspStartCameraBtn.style.display = "none";
-                        inspCapturePhotoBtn.style.display = "";
-                        inspStopCameraBtn.style.display = "";
-                        setInspStatus3("Camera active \u2014 tap Capture", false);
-                    })
-                    .catch(function(err) {
-                        setInspStatus3("Camera error: " + err.message, false);
-                    });
+                inspStartCameraBtn.addEventListener("click", startInspCamera);
+            }
+
+            if (inspFlipCameraBtn) {
+                inspFlipCameraBtn.addEventListener("click", function() {
+                    inspFacingMode = (inspFacingMode === "user") ? "environment" : "user";
+                    if (inspCameraStream) {
+                        inspCameraStream.getTracks().forEach(function(t) { t.stop(); });
+                    }
+                    startInspCamera();
                 });
             }
 
@@ -5580,6 +5613,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     inspStartCameraBtn.style.display = "";
                     inspCapturePhotoBtn.style.display = "none";
                     inspStopCameraBtn.style.display = "none";
+                    if (inspFlipCameraBtn) inspFlipCameraBtn.style.display = "none";
 
                     classifyPhoto(dataUrl, null);
                 });
@@ -5595,6 +5629,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     inspStartCameraBtn.style.display = "";
                     inspCapturePhotoBtn.style.display = "none";
                     inspStopCameraBtn.style.display = "none";
+                    if (inspFlipCameraBtn) inspFlipCameraBtn.style.display = "none";
                     setInspStatus3("Ready", false);
                 });
             }
@@ -9176,7 +9211,9 @@ def inspection_classify():
       falls back to text-based description if unavailable
     """
     # Check for demo classification (reliable demo path)
-    demo_type = request.form.get('demo_type') or (request.json or {}).get('demo_type')
+    demo_type = request.form.get('demo_type')
+    if not demo_type and request.is_json:
+        demo_type = (request.json or {}).get('demo_type')
     if demo_type and demo_type in _DEMO_CLASSIFICATIONS:
         import time as _classify_time
         _classify_time.sleep(1.5)  # Simulate inference time for demo realism

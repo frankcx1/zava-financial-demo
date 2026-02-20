@@ -8,8 +8,8 @@ using System.Runtime.InteropServices.WindowsRuntime;
 #if WINDOWS
 using Microsoft.Graphics.Imaging;
 using Microsoft.Windows.AI;
-using Microsoft.Windows.AI.ContentModeration;
-using Microsoft.Windows.AI.Generative;
+using Microsoft.Windows.AI.ContentSafety;
+using Microsoft.Windows.AI.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 #endif
@@ -29,9 +29,9 @@ public static class VisionClassifier
     };
 
     // LAF token — unlocks Phi Silica APIs for packaged apps
-    // PFN: Microsoft.NPUDemo.VisionService_5z9edc3e9tzrc
+    // PFN: Microsoft.NPUDemo.VisionService_r0xr04974zwaa
     private const string LafFeatureId = "com.microsoft.windows.ai.languagemodel";
-    private const string LafToken = "NaE80gqZbJGQ6lFjn75P/g==";
+    private const string LafToken = "1A1xXf+TQb5ETXD4dqSOJA==";
     // Attestation uses the actual publisher ID hash from the installed MSIX
     private const string LafAttestation =
         "r0xr04974zwaa has registered their use of " +
@@ -80,7 +80,7 @@ public static class VisionClassifier
             // Check if ImageDescriptionGenerator is available on this device
             var readyState = ImageDescriptionGenerator.GetReadyState();
             Log($"[VisionClassifier] GetReadyState: {readyState}");
-            if (readyState == AIFeatureReadyState.EnsureNeeded)
+            if (readyState == AIFeatureReadyState.NotReady)
             {
                 Log("[VisionClassifier] Model not ready, calling EnsureReadyAsync...");
                 var deployResult = await ImageDescriptionGenerator.EnsureReadyAsync();
@@ -95,6 +95,12 @@ public static class VisionClassifier
             else if (readyState == AIFeatureReadyState.NotSupportedOnCurrentSystem)
             {
                 Log("[VisionClassifier] Not supported on this system");
+                IsAvailable = false;
+                return;
+            }
+            else if (readyState == AIFeatureReadyState.DisabledByUser)
+            {
+                Log("[VisionClassifier] AI features disabled by user in Windows Settings");
                 IsAvailable = false;
                 return;
             }
@@ -133,9 +139,9 @@ public static class VisionClassifier
             var descKind = kind.ToLower() switch
             {
                 "caption" => ImageDescriptionKind.BriefDescription,
-                "detailed" => ImageDescriptionKind.DetailedDescrition,
+                "detailed" => ImageDescriptionKind.DetailedDescription,
                 "accessibility" => ImageDescriptionKind.AccessibleDescription,
-                _ => ImageDescriptionKind.DetailedDescrition
+                _ => ImageDescriptionKind.DetailedDescription
             };
 
             var result = await _generator.DescribeAsync(imageBuffer, descKind, new ContentFilterOptions());
@@ -175,7 +181,7 @@ public static class VisionClassifier
             // Get a detailed description from Phi Silica
             var descResult = await _generator.DescribeAsync(
                 imageBuffer,
-                ImageDescriptionKind.DetailedDescrition,
+                ImageDescriptionKind.DetailedDescription,
                 new ContentFilterOptions()
             );
             var description = descResult.Description ?? "";
@@ -219,7 +225,7 @@ public static class VisionClassifier
             // Use detailed description to capture any text in the image
             var textResult = await _generator.DescribeAsync(
                 imageBuffer,
-                ImageDescriptionKind.DetailedDescrition,
+                ImageDescriptionKind.DetailedDescription,
                 new ContentFilterOptions()
             );
 
@@ -255,7 +261,7 @@ public static class VisionClassifier
             BitmapAlphaMode.Premultiplied
         );
 
-        return ImageBuffer.CreateBufferAttachedToBitmap(softwareBitmap);
+        return ImageBuffer.CreateForSoftwareBitmap(softwareBitmap);
     }
 #endif
 
