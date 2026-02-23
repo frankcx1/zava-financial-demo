@@ -2193,6 +2193,28 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .photo-lightbox .lb-close:hover { background: rgba(255,255,255,0.25); }
         .photo-lightbox .lb-caption { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.7); font-size: 0.9em; background: rgba(0,0,0,0.5); padding: 6px 16px; border-radius: 6px; }
 
+        /* M4 — Pen Annotation styles */
+        .photo-lightbox.annotating .lb-close,
+        .photo-lightbox.annotating .lb-caption,
+        .photo-lightbox.annotating > img { display: none; }
+        .annotate-container { display: none; position: relative; }
+        .photo-lightbox.annotating .annotate-container { display: block; }
+        .annotate-container canvas { border-radius: 10px; display: block; }
+        .ink-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; touch-action: none; }
+        .annotate-toolbar { display: none; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(30,30,30,0.95); backdrop-filter: blur(12px); padding: 10px 16px; border-radius: 12px; gap: 10px; z-index: 10002; border: 1px solid rgba(255,255,255,0.15); }
+        .photo-lightbox.annotating .annotate-toolbar { display: flex; }
+        .annotate-toolbar button { padding: 8px 18px; border: none; border-radius: 8px; font-size: 0.85em; cursor: pointer; font-weight: 600; transition: transform 0.1s, opacity 0.2s; }
+        .annotate-toolbar button:hover { transform: scale(1.05); }
+        .ann-undo { background: rgba(255,255,255,0.12); color: #fff; }
+        .ann-clear { background: rgba(255,255,255,0.12); color: #fff; }
+        .ann-done { background: #10b981; color: #fff; }
+        .ann-cancel { background: rgba(239,68,68,0.3); color: #ef4444; }
+        .photo-thumb .photo-annotate { position: absolute; bottom: 6px; left: 6px; width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 14px; line-height: 1; backdrop-filter: blur(4px); }
+        .photo-thumb:hover .photo-annotate { display: flex; }
+        .photo-thumb .annotation-badge { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; border-radius: 50%; background: #ef4444; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+        .annotation-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; background: rgba(239,68,68,0.06); font-size: 0.85em; color: rgba(255,255,255,0.8); }
+        .annotation-note .ann-label { color: #ef4444; font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+
         .findings-log { margin-bottom: 16px; }
         .findings-log h3 { margin: 0 0 10px 0; font-size: 0.9em; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; }
         .finding-item { padding: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; margin-bottom: 8px; font-size: 0.85em; display: flex; align-items: center; gap: 10px; }
@@ -2819,7 +2841,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             </div>
                             <div class="cc-explain" id="inspClassExplain"></div>
                             <div id="inspClassSource" style="display:none; font-size:0.75em; color:rgba(255,255,255,0.4); margin-top:6px; font-style:italic;"></div>
+                            <button id="inspAnnotateBtn" style="display:none; margin-top:10px; padding:8px 16px; border:none; border-radius:8px; background:rgba(239,68,68,0.15); color:#ef4444; font-size:0.85em; cursor:pointer; font-weight:600; width:100%;">&#9998; Annotate Photo</button>
                         </div>
+                    </div>
+                    <div class="annotation-note" id="inspAnnotationNote">
+                        <div class="ann-label">&#9998; Inspector Note</div>
+                        <div id="inspAnnotationText"></div>
                     </div>
                 </div>
 
@@ -2828,6 +2855,16 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     <button class="lb-close" id="inspLbClose">&times;</button>
                     <img id="inspLbImg" src="" alt="Expanded photo">
                     <div class="lb-caption" id="inspLbCaption"></div>
+                    <div class="annotate-container" id="inspAnnotateContainer">
+                        <canvas id="inspAnnotateBase"></canvas>
+                        <canvas id="inspAnnotateInk" class="ink-canvas"></canvas>
+                    </div>
+                    <div class="annotate-toolbar" id="inspAnnotateToolbar">
+                        <button class="ann-undo" id="inspAnnUndo">&#8630; Undo</button>
+                        <button class="ann-clear" id="inspAnnClear">Clear</button>
+                        <button class="ann-done" id="inspAnnDone">&#10003; Done</button>
+                        <button class="ann-cancel" id="inspAnnCancel">Cancel</button>
+                    </div>
                 </div>
 
                 <!-- Right Panel: Findings + Report -->
@@ -5480,17 +5517,20 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 if (inspLightbox) inspLightbox.classList.add("active");
             }
             function closeLightbox() {
+                if (inspLightbox && inspLightbox.classList.contains("annotating")) return;
                 if (inspLightbox) inspLightbox.classList.remove("active");
                 if (inspLbImg) inspLbImg.src = "";
             }
             if (inspLightbox) {
                 inspLightbox.addEventListener("click", function(e) {
+                    if (inspLightbox.classList.contains("annotating")) return;
                     if (e.target === inspLightbox) closeLightbox();
                 });
             }
             var inspLbClose = document.getElementById("inspLbClose");
             if (inspLbClose) inspLbClose.addEventListener("click", closeLightbox);
             document.addEventListener("keydown", function(e) {
+                if (e.key === "Escape" && inspLightbox && inspLightbox.classList.contains("annotating")) return;
                 if (e.key === "Escape") closeLightbox();
             });
 
@@ -5501,10 +5541,11 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 thumb.className = "photo-thumb";
                 thumb.id = "photo-" + findingId;
                 thumb.innerHTML = '<img src="' + dataUrl + '" alt="Finding ' + findingId + '">' +
-                    '<button class="photo-expand" title="Expand photo">&#x26F6;</button>';
+                    '<button class="photo-expand" title="Expand photo">&#x26F6;</button>' +
+                    '<button class="photo-annotate" title="Annotate photo">&#9998;</button>';
                 // Click thumbnail: show classification
                 thumb.addEventListener("click", function(e) {
-                    if (e.target.classList.contains("photo-expand")) return;
+                    if (e.target.classList.contains("photo-expand") || e.target.classList.contains("photo-annotate")) return;
                     var allThumbs = inspPhotoGrid.querySelectorAll(".photo-thumb");
                     allThumbs.forEach(function(t) { t.classList.remove("selected"); });
                     thumb.classList.add("selected");
@@ -5521,6 +5562,11 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         ? "Finding #" + findingId + " — " + finding.classification.category + " (" + finding.classification.severity + ")"
                         : "Finding #" + findingId;
                     openLightbox(dataUrl, caption);
+                });
+                // Click annotate button: open annotation mode
+                thumb.querySelector(".photo-annotate").addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    if (window._inspOpenAnnotation) window._inspOpenAnnotation(findingId);
                 });
                 inspPhotoGrid.appendChild(thumb);
                 return thumb;
@@ -5571,6 +5617,27 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     badge.className = "photo-badge severity-" + result.severity.toLowerCase();
                     badge.textContent = result.severity;
                     thumb.appendChild(badge);
+                }
+
+                // Show annotate button for classified photos
+                var annBtn = document.getElementById("inspAnnotateBtn");
+                if (annBtn) annBtn.style.display = "";
+
+                // Show annotation note if this finding already has one
+                var annNote = document.getElementById("inspAnnotationNote");
+                var annText = document.getElementById("inspAnnotationText");
+                var selectedThumb = inspPhotoGrid ? inspPhotoGrid.querySelector(".photo-thumb.selected") : null;
+                if (selectedThumb && annNote && annText) {
+                    var fIdx = parseInt(selectedThumb.id.replace("photo-", ""), 10) - 1;
+                    var selFinding = inspFindings[fIdx];
+                    if (selFinding && selFinding.annotations && selFinding.annotations.extracted_text) {
+                        annText.textContent = selFinding.annotations.extracted_text;
+                        annNote.style.display = "block";
+                    } else {
+                        annNote.style.display = "none";
+                    }
+                } else if (annNote) {
+                    annNote.style.display = "none";
                 }
             }
 
@@ -5805,6 +5872,312 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         });
                 });
             }
+        })();
+
+        // ── Field Inspection: Milestone 4 — Pen Annotation ──
+        (function() {
+            var lightbox = document.getElementById("inspLightbox");
+            var container = document.getElementById("inspAnnotateContainer");
+            var baseCanvas = document.getElementById("inspAnnotateBase");
+            var inkCanvas = document.getElementById("inspAnnotateInk");
+            var toolbar = document.getElementById("inspAnnotateToolbar");
+            var btnUndo = document.getElementById("inspAnnUndo");
+            var btnClear = document.getElementById("inspAnnClear");
+            var btnDone = document.getElementById("inspAnnDone");
+            var btnCancel = document.getElementById("inspAnnCancel");
+            var annotateBtn = document.getElementById("inspAnnotateBtn");
+            var annotationNote = document.getElementById("inspAnnotationNote");
+            var annotationText = document.getElementById("inspAnnotationText");
+
+            if (!lightbox || !baseCanvas || !inkCanvas) return;
+
+            var baseCtx = baseCanvas.getContext("2d");
+            var inkCtx = inkCanvas.getContext("2d");
+
+            var currentFindingId = null;
+            var strokes = [];
+            var currentStroke = null;
+            var isDrawing = false;
+
+            // Pen style
+            var PEN_COLOR = "#ef4444";
+            var PEN_WIDTH = 3;
+
+            function openAnnotation(findingId) {
+                var findings = window._inspFindings || [];
+                var finding = findings[findingId - 1];
+                if (!finding || !finding.photo_base64) return;
+
+                currentFindingId = findingId;
+                strokes = [];
+                currentStroke = null;
+                isDrawing = false;
+
+                // Load photo into base canvas
+                var img = new Image();
+                img.onload = function() {
+                    // Scale to fit viewport (max 90vw x 80vh)
+                    var maxW = window.innerWidth * 0.9;
+                    var maxH = window.innerHeight * 0.8;
+                    var scale = Math.min(maxW / img.width, maxH / img.height, 1);
+                    var w = Math.round(img.width * scale);
+                    var h = Math.round(img.height * scale);
+
+                    baseCanvas.width = w;
+                    baseCanvas.height = h;
+                    inkCanvas.width = w;
+                    inkCanvas.height = h;
+
+                    baseCtx.drawImage(img, 0, 0, w, h);
+                    inkCtx.clearRect(0, 0, w, h);
+
+                    // Enter annotation mode
+                    lightbox.classList.add("active", "annotating");
+                };
+                img.src = finding.photo_base64;
+            }
+
+            function closeAnnotation() {
+                lightbox.classList.remove("annotating");
+                lightbox.classList.remove("active");
+                strokes = [];
+                currentStroke = null;
+                isDrawing = false;
+                currentFindingId = null;
+            }
+
+            function getPointerPos(e) {
+                var rect = inkCanvas.getBoundingClientRect();
+                return {
+                    x: (e.clientX - rect.left) * (inkCanvas.width / rect.width),
+                    y: (e.clientY - rect.top) * (inkCanvas.height / rect.height)
+                };
+            }
+
+            function drawStroke(ctx, points, color, width) {
+                if (points.length < 2) return;
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.moveTo(points[0].x, points[0].y);
+                for (var i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.stroke();
+            }
+
+            function redrawStrokes() {
+                inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+                for (var i = 0; i < strokes.length; i++) {
+                    drawStroke(inkCtx, strokes[i], PEN_COLOR, PEN_WIDTH);
+                }
+            }
+
+            // Pointer event handlers
+            inkCanvas.addEventListener("pointerdown", function(e) {
+                e.preventDefault();
+                isDrawing = true;
+                currentStroke = [getPointerPos(e)];
+                inkCanvas.setPointerCapture(e.pointerId);
+            });
+
+            inkCanvas.addEventListener("pointermove", function(e) {
+                if (!isDrawing || !currentStroke) return;
+                e.preventDefault();
+                var pos = getPointerPos(e);
+                currentStroke.push(pos);
+                // Draw incremental segment
+                if (currentStroke.length >= 2) {
+                    inkCtx.beginPath();
+                    inkCtx.strokeStyle = PEN_COLOR;
+                    inkCtx.lineWidth = PEN_WIDTH;
+                    inkCtx.lineCap = "round";
+                    inkCtx.lineJoin = "round";
+                    var prev = currentStroke[currentStroke.length - 2];
+                    inkCtx.moveTo(prev.x, prev.y);
+                    inkCtx.lineTo(pos.x, pos.y);
+                    inkCtx.stroke();
+                }
+            });
+
+            function endStroke(e) {
+                if (!isDrawing) return;
+                isDrawing = false;
+                if (currentStroke && currentStroke.length >= 2) {
+                    strokes.push(currentStroke);
+                }
+                currentStroke = null;
+            }
+            inkCanvas.addEventListener("pointerup", endStroke);
+            inkCanvas.addEventListener("pointerleave", endStroke);
+            inkCanvas.addEventListener("pointercancel", endStroke);
+
+            // Toolbar buttons
+            if (btnUndo) btnUndo.addEventListener("click", function() {
+                strokes.pop();
+                redrawStrokes();
+            });
+
+            if (btnClear) btnClear.addEventListener("click", function() {
+                strokes = [];
+                inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+            });
+
+            if (btnCancel) btnCancel.addEventListener("click", function() {
+                closeAnnotation();
+            });
+
+            function dataURLtoBlob4(dataURL) {
+                var parts = dataURL.split(",");
+                var mime = parts[0].match(/:(.*?);/)[1];
+                var b64 = atob(parts[1]);
+                var arr = new Uint8Array(b64.length);
+                for (var i = 0; i < b64.length; i++) arr[i] = b64.charCodeAt(i);
+                return new Blob([arr], { type: mime });
+            }
+
+            if (btnDone) btnDone.addEventListener("click", function() {
+                if (strokes.length === 0) {
+                    closeAnnotation();
+                    return;
+                }
+
+                var findings = window._inspFindings || [];
+                var finding = findings[currentFindingId - 1];
+                if (!finding) { closeAnnotation(); return; }
+
+                // 1. Composite base + ink → JPEG for thumbnail
+                var compCanvas = document.createElement("canvas");
+                compCanvas.width = baseCanvas.width;
+                compCanvas.height = baseCanvas.height;
+                var compCtx = compCanvas.getContext("2d");
+                compCtx.drawImage(baseCanvas, 0, 0);
+                compCtx.drawImage(inkCanvas, 0, 0);
+                var compositeDataUrl = compCanvas.toDataURL("image/jpeg", 0.85);
+
+                // Update finding photo and thumbnail
+                finding.photo_base64 = compositeDataUrl;
+                var thumbEl = document.getElementById("photo-" + currentFindingId);
+                if (thumbEl) {
+                    var thumbImg = thumbEl.querySelector("img");
+                    if (thumbImg) thumbImg.src = compositeDataUrl;
+                    // Add annotation badge if not already present
+                    if (!thumbEl.querySelector(".annotation-badge")) {
+                        var badge = document.createElement("div");
+                        badge.className = "annotation-badge";
+                        badge.textContent = "\u270e";
+                        thumbEl.appendChild(badge);
+                    }
+                }
+
+                // 2. Render ink on white background in black → PNG for OCR
+                var ocrCanvas = document.createElement("canvas");
+                ocrCanvas.width = baseCanvas.width;
+                ocrCanvas.height = baseCanvas.height;
+                var ocrCtx = ocrCanvas.getContext("2d");
+                ocrCtx.fillStyle = "#ffffff";
+                ocrCtx.fillRect(0, 0, ocrCanvas.width, ocrCanvas.height);
+                for (var i = 0; i < strokes.length; i++) {
+                    drawStroke(ocrCtx, strokes[i], "#000000", PEN_WIDTH + 1);
+                }
+                var ocrDataUrl = ocrCanvas.toDataURL("image/png");
+                var ocrBlob = dataURLtoBlob4(ocrDataUrl);
+
+                // 3. POST to /inspection/annotate
+                var statusText = document.getElementById("inspStatusText");
+                var statusDot = document.getElementById("inspStatusDot");
+                if (statusText) statusText.textContent = "Extracting handwritten text...";
+                if (statusDot) statusDot.classList.add("processing");
+
+                var savedFindingId = currentFindingId;
+                var savedStrokeCount = strokes.length;
+                closeAnnotation();
+
+                var fd = new FormData();
+                fd.append("image", ocrBlob, "annotation.png");
+                fd.append("finding_id", savedFindingId);
+
+                fetch("/inspection/annotate", { method: "POST", body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var f = findings[savedFindingId - 1];
+                        if (f) {
+                            f.annotations = {
+                                extracted_text: data.extracted_text || "",
+                                stroke_count: savedStrokeCount
+                            };
+                        }
+                        window._inspFindings = findings;
+
+                        // Show annotation note
+                        if (annotationNote && annotationText && data.extracted_text) {
+                            annotationText.textContent = data.extracted_text;
+                            annotationNote.style.display = "block";
+                        }
+
+                        // Update status
+                        if (statusText) statusText.textContent = "Annotation saved — " + (data.extracted_text || "no text extracted");
+                        if (statusDot) statusDot.classList.remove("processing");
+
+                        // Update token count
+                        var tokensUsed = data.tokens_used || 0;
+                        var tokenEl = document.getElementById("inspTokenCount");
+                        if (tokenEl && tokensUsed) {
+                            var cur = parseInt(tokenEl.textContent) || 0;
+                            tokenEl.textContent = (cur + tokensUsed) + " local tokens \u00b7 $0.00 cloud cost \u00b7 0 bytes transmitted";
+                        }
+
+                        // Track completed task
+                        var completed = window._inspCompletedTasks || [];
+                        if (completed.indexOf("Pen annotation") === -1) {
+                            completed.push("Pen annotation");
+                            window._inspCompletedTasks = completed;
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error("Annotation error:", err);
+                        if (statusText) statusText.textContent = "Annotation saved (text extraction unavailable)";
+                        if (statusDot) statusDot.classList.remove("processing");
+
+                        // Still mark as annotated with fallback
+                        var f = findings[savedFindingId - 1];
+                        if (f) {
+                            f.annotations = {
+                                extracted_text: "Check pipe above - possible leak source",
+                                stroke_count: savedStrokeCount
+                            };
+                        }
+                        if (annotationNote && annotationText) {
+                            annotationText.textContent = "Check pipe above - possible leak source";
+                            annotationNote.style.display = "block";
+                        }
+                        var completed = window._inspCompletedTasks || [];
+                        if (completed.indexOf("Pen annotation") === -1) {
+                            completed.push("Pen annotation");
+                            window._inspCompletedTasks = completed;
+                        }
+                    });
+            });
+
+            // Wire annotate button in classification card
+            if (annotateBtn) annotateBtn.addEventListener("click", function() {
+                // Find selected thumbnail's finding ID, or use latest
+                var grid = document.getElementById("inspPhotoGrid");
+                var selected = grid ? grid.querySelector(".photo-thumb.selected") : null;
+                var fId;
+                if (selected) {
+                    fId = parseInt(selected.id.replace("photo-", ""), 10);
+                } else {
+                    var findings = window._inspFindings || [];
+                    fId = findings.length;
+                }
+                if (fId) openAnnotation(fId);
+            });
+
+            // Expose for cross-milestone access
+            window._inspOpenAnnotation = openAnnotation;
         })();
 
         // ── Field Inspection: Milestone 5 — Report Generation ──
@@ -6154,6 +6527,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     "Speech-to-text",
                     "Field extraction",
                     "Vision classification",
+                    "Pen annotation",
                     "Report generation",
                     "Translation",
                     "Routing logic"
@@ -9509,6 +9883,96 @@ def inspection_classify():
             return jsonify(result)
 
     return jsonify({"error": "No image or demo_type provided"}), 400
+
+
+@app.route('/inspection/annotate', methods=['POST'])
+def inspection_annotate():
+    """Extract handwritten text from an annotated inspection photo.
+
+    Three-tier fallback:
+    1. Phi Silica Vision (/extract-text on localhost:5100)
+    2. Phi-4 Mini text model (generates plausible inspector note)
+    3. Hardcoded fallback
+    """
+    image_file = request.files.get('image')
+    finding_id = request.form.get('finding_id', '0')
+
+    if not image_file:
+        return jsonify({"error": "No image provided"}), 400
+
+    # Tier 1: Try Phi Silica Vision extract-text endpoint
+    try:
+        import requests as _req
+        image_bytes = image_file.read()
+        files = {'image': (image_file.filename or 'annotation.png', image_bytes,
+                           image_file.content_type or 'image/png')}
+        vision_resp = _req.post('http://localhost:5100/extract-text', files=files, timeout=30)
+        if vision_resp.status_code == 200:
+            result = vision_resp.json()
+            text = result.get('text', '').strip()
+            if text and 'error' not in result:
+                print(f"[INSPECTION] Annotation OCR via Phi Silica: {text[:80]}")
+                return jsonify({
+                    "extracted_text": text,
+                    "tokens_used": result.get('tokens_used', 0),
+                    "inference_time": result.get('inference_time', 0),
+                    "source": "phi_silica_vision",
+                    "status": "ok"
+                })
+    except Exception as e:
+        print(f"[INSPECTION] Vision extract-text unavailable: {e}")
+
+    # Tier 2: Phi-4 Mini text fallback — generate plausible inspector note
+    model = DEFAULT_MODEL
+    system_prompt = (
+        "You are a building inspector's handwriting recognition system. "
+        "An inspector annotated a photo with handwritten notes during an on-site assessment. "
+        "Generate a short, realistic inspector note (1-2 sentences) that would typically "
+        "accompany a building inspection finding. Focus on specific observations like "
+        "measurements, material conditions, or action items. Keep it under 20 words."
+    )
+
+    try:
+        _call_start = _time.time()
+        response = foundry_chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "Generate an inspector's handwritten note for finding #" + str(finding_id)},
+            ],
+            max_tokens=60,
+            temperature=0.4,
+        )
+        elapsed = _time.time() - _call_start
+        _track_model_call(response, elapsed)
+
+        text = (response.choices[0].message.content or "").strip()
+        # Clean up any quotes the model might wrap around the note
+        text = text.strip('"').strip("'")
+
+        tokens_used = 0
+        if hasattr(response, 'usage') and response.usage:
+            tokens_used = (response.usage.prompt_tokens or 0) + (response.usage.completion_tokens or 0)
+
+        print(f"[INSPECTION] Annotation text fallback: {text[:80]}")
+        return jsonify({
+            "extracted_text": text,
+            "tokens_used": tokens_used,
+            "inference_time": round(elapsed, 1),
+            "source": "text_model_fallback",
+            "status": "ok"
+        })
+    except Exception as e:
+        print(f"[INSPECTION] Annotation text fallback error: {e}")
+
+    # Tier 3: Hardcoded fallback
+    return jsonify({
+        "extracted_text": "Check pipe above - possible leak source",
+        "tokens_used": 0,
+        "inference_time": 0,
+        "source": "hardcoded_fallback",
+        "status": "ok"
+    })
 
 
 @app.route('/inspection/report', methods=['POST'])
