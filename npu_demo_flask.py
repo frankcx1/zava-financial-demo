@@ -2181,6 +2181,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .conf-amber .cc-confidence-fill { background: #f59e0b; }
         .conf-red .cc-confidence-fill { background: #ef4444; }
         .classification-card .cc-explain { font-size: 0.85em; color: rgba(255,255,255,0.6); margin-top: 8px; }
+        .classification-card .cc-loading { display: flex; align-items: center; gap: 10px; padding: 18px 0; justify-content: center; color: rgba(255,255,255,0.5); }
+        .photo-thumb { cursor: pointer; position: relative; }
+        .photo-thumb.selected { outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 6px; }
+        .photo-thumb .photo-expand { position: absolute; bottom: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 14px; line-height: 1; backdrop-filter: blur(4px); }
+        .photo-thumb:hover .photo-expand { display: flex; }
+        .photo-lightbox { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,0.88); display: none; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(6px); }
+        .photo-lightbox.active { display: flex; }
+        .photo-lightbox img { max-width: 90vw; max-height: 85vh; border-radius: 10px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); object-fit: contain; }
+        .photo-lightbox .lb-close { position: absolute; top: 20px; right: 24px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.15); color: #fff; border: none; cursor: pointer; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+        .photo-lightbox .lb-close:hover { background: rgba(255,255,255,0.25); }
+        .photo-lightbox .lb-caption { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.7); font-size: 0.9em; background: rgba(0,0,0,0.5); padding: 6px 16px; border-radius: 6px; }
 
         .findings-log { margin-bottom: 16px; }
         .findings-log h3 { margin: 0 0 10px 0; font-size: 0.9em; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1px; }
@@ -2764,6 +2775,9 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         </button>
                     </div>
                     <div style="display:flex; gap:8px; margin-top:6px;">
+                        <button class="insp-mic-btn secondary" id="inspFluidDictationBtn" style="flex:1; background: rgba(255,255,255,0.1); font-size:0.85em;">
+                            &#127908; Fluid Dictation
+                        </button>
                         <button class="insp-mic-btn secondary" id="inspScriptedBtn" style="flex:1; background: rgba(255,255,255,0.1); font-size:0.85em;">
                             &#9654; Use Scripted Input (Demo)
                         </button>
@@ -2793,17 +2807,27 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
                     <!-- Classification card (appears after photo analysis) -->
                     <div class="classification-card" id="inspClassCard" style="display:none;">
-                        <div class="cc-category" id="inspClassCategory">--</div>
-                        <div class="cc-row">
-                            <span class="cc-severity" id="inspClassSeverity">--</span>
-                            <div class="cc-confidence">
-                                <div style="font-size:0.8em; color:rgba(255,255,255,0.5); margin-bottom:3px;">Confidence: <span id="inspClassConfPct">0</span>%</div>
-                                <div class="cc-confidence-bar"><div class="cc-confidence-fill" id="inspClassConfBar" style="width:0%"></div></div>
+                        <div class="cc-loading" id="inspClassLoading" style="display:none;"><span class="spinner"></span> Analyzing image on NPU...</div>
+                        <div class="cc-inner">
+                            <div class="cc-category" id="inspClassCategory">--</div>
+                            <div class="cc-row">
+                                <span class="cc-severity" id="inspClassSeverity">--</span>
+                                <div class="cc-confidence">
+                                    <div style="font-size:0.8em; color:rgba(255,255,255,0.5); margin-bottom:3px;">Confidence: <span id="inspClassConfPct">0</span>%</div>
+                                    <div class="cc-confidence-bar"><div class="cc-confidence-fill" id="inspClassConfBar" style="width:0%"></div></div>
+                                </div>
                             </div>
+                            <div class="cc-explain" id="inspClassExplain"></div>
+                            <div id="inspClassSource" style="display:none; font-size:0.75em; color:rgba(255,255,255,0.4); margin-top:6px; font-style:italic;"></div>
                         </div>
-                        <div class="cc-explain" id="inspClassExplain"></div>
-                        <div id="inspClassSource" style="display:none; font-size:0.75em; color:rgba(255,255,255,0.4); margin-top:6px; font-style:italic;"></div>
                     </div>
+                </div>
+
+                <!-- Photo lightbox overlay -->
+                <div class="photo-lightbox" id="inspLightbox">
+                    <button class="lb-close" id="inspLbClose">&times;</button>
+                    <img id="inspLbImg" src="" alt="Expanded photo">
+                    <div class="lb-caption" id="inspLbCaption"></div>
                 </div>
 
                 <!-- Right Panel: Findings + Report -->
@@ -5338,7 +5362,16 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         return;
                     }
                     showTranscript(data.transcript || transcript);
-                    animateFields(data.fields || {});
+                    // Auto-populate date/time with current local time
+                    var now = new Date();
+                    var dtLocal = now.getFullYear() + "-" +
+                        String(now.getMonth()+1).padStart(2,"0") + "-" +
+                        String(now.getDate()).padStart(2,"0") + "T" +
+                        String(now.getHours()).padStart(2,"0") + ":" +
+                        String(now.getMinutes()).padStart(2,"0");
+                    var fields = data.fields || {};
+                    fields.datetime = dtLocal;
+                    animateFields(fields);
                     updateInspTokens(data.tokens_used || 0);
                     setInspStatus("Fields extracted", false);
                 })
@@ -5353,6 +5386,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             if (inspExtractBtn && inspTranscriptInput) {
                 inspExtractBtn.addEventListener("click", function() {
+                    // Close Voice Typing if it's open
+                    fetch("/inspection/fluid-dictation", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "close" })
+                    }).catch(function() {});
                     var text = inspTranscriptInput.value.trim();
                     if (!text) {
                         setInspStatus("Type or dictate (Win+H) inspection notes first", false);
@@ -5360,6 +5399,24 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     }
                     showTranscript(text);
                     extractFields(text);
+                });
+            }
+
+            // --- Fluid Dictation — opens Windows Voice Typing (Win+H) via backend ---
+            var inspFluidDictationBtn = document.getElementById("inspFluidDictationBtn");
+            if (inspFluidDictationBtn) {
+                inspFluidDictationBtn.addEventListener("click", function() {
+                    // Refocus the textarea so Voice Typing has an active text field
+                    if (inspTranscriptInput) inspTranscriptInput.focus();
+                    // Small delay to let focus settle before Win+H fires
+                    setTimeout(function() {
+                        fetch("/inspection/fluid-dictation", { method: "POST" })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                if (data.error) setInspStatus("Could not open Voice Typing: " + data.error, false);
+                            })
+                            .catch(function() { setInspStatus("Could not open Voice Typing", false); });
+                    }, 150);
                 });
             }
 
@@ -5413,13 +5470,58 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 }
             }
 
+            // Lightbox expand/close
+            var inspLightbox = document.getElementById("inspLightbox");
+            var inspLbImg = document.getElementById("inspLbImg");
+            var inspLbCaption = document.getElementById("inspLbCaption");
+            function openLightbox(src, caption) {
+                if (inspLbImg) inspLbImg.src = src;
+                if (inspLbCaption) inspLbCaption.textContent = caption || "";
+                if (inspLightbox) inspLightbox.classList.add("active");
+            }
+            function closeLightbox() {
+                if (inspLightbox) inspLightbox.classList.remove("active");
+                if (inspLbImg) inspLbImg.src = "";
+            }
+            if (inspLightbox) {
+                inspLightbox.addEventListener("click", function(e) {
+                    if (e.target === inspLightbox) closeLightbox();
+                });
+            }
+            var inspLbClose = document.getElementById("inspLbClose");
+            if (inspLbClose) inspLbClose.addEventListener("click", closeLightbox);
+            document.addEventListener("keydown", function(e) {
+                if (e.key === "Escape") closeLightbox();
+            });
+
             // Add photo thumbnail to grid
             function addPhotoToGrid(dataUrl, findingId) {
                 if (inspPhotoEmpty) inspPhotoEmpty.style.display = "none";
                 var thumb = document.createElement("div");
                 thumb.className = "photo-thumb";
                 thumb.id = "photo-" + findingId;
-                thumb.innerHTML = '<img src="' + dataUrl + '" alt="Finding ' + findingId + '">';
+                thumb.innerHTML = '<img src="' + dataUrl + '" alt="Finding ' + findingId + '">' +
+                    '<button class="photo-expand" title="Expand photo">&#x26F6;</button>';
+                // Click thumbnail: show classification
+                thumb.addEventListener("click", function(e) {
+                    if (e.target.classList.contains("photo-expand")) return;
+                    var allThumbs = inspPhotoGrid.querySelectorAll(".photo-thumb");
+                    allThumbs.forEach(function(t) { t.classList.remove("selected"); });
+                    thumb.classList.add("selected");
+                    var finding = inspFindings[findingId - 1];
+                    if (finding && finding.classification) {
+                        showClassification(finding.classification, null);
+                    }
+                });
+                // Click expand button: open lightbox
+                thumb.querySelector(".photo-expand").addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    var finding = inspFindings[findingId - 1];
+                    var caption = finding && finding.classification
+                        ? "Finding #" + findingId + " — " + finding.classification.category + " (" + finding.classification.severity + ")"
+                        : "Finding #" + findingId;
+                    openLightbox(dataUrl, caption);
+                });
                 inspPhotoGrid.appendChild(thumb);
                 return thumb;
             }
@@ -5427,6 +5529,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             // Show classification result
             function showClassification(result, thumb) {
                 // Update classification card
+                hideClassLoading();
                 if (inspClassCard) {
                     inspClassCard.style.display = "block";
                     document.getElementById("inspClassCategory").textContent = result.category;
@@ -5499,8 +5602,27 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 if (inspGenerateBtn) inspGenerateBtn.disabled = false;
             }
 
+            // Show loading spinner on classification card
+            function showClassLoading() {
+                if (inspClassCard) {
+                    inspClassCard.style.display = "block";
+                    inspClassCard.className = "classification-card";
+                    var inner = inspClassCard.querySelector(".cc-inner");
+                    if (inner) inner.style.display = "none";
+                    var loadEl = document.getElementById("inspClassLoading");
+                    if (loadEl) loadEl.style.display = "flex";
+                }
+            }
+            function hideClassLoading() {
+                var inner = inspClassCard ? inspClassCard.querySelector(".cc-inner") : null;
+                if (inner) inner.style.display = "";
+                var loadEl = document.getElementById("inspClassLoading");
+                if (loadEl) loadEl.style.display = "none";
+            }
+
             // Classify a captured photo
             function classifyPhoto(dataUrl, demoType) {
+                showClassLoading();
                 setInspStatus3("Analyzing image with AI...", true);
 
                 if (demoType) {
@@ -5649,33 +5771,38 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     var demo = demoPhotos[demoPhotoIndex % demoPhotos.length];
                     demoPhotoIndex++;
 
-                    // Generate a placeholder image with the category label
-                    var canvas = document.createElement("canvas");
-                    canvas.width = 640;
-                    canvas.height = 480;
-                    var ctx = canvas.getContext("2d");
-                    // Background gradient
-                    var grad = ctx.createLinearGradient(0, 0, 640, 480);
-                    grad.addColorStop(0, demo.color + "40");
-                    grad.addColorStop(1, demo.color + "80");
-                    ctx.fillStyle = grad;
-                    ctx.fillRect(0, 0, 640, 480);
-                    // Border
-                    ctx.strokeStyle = demo.color;
-                    ctx.lineWidth = 4;
-                    ctx.strokeRect(10, 10, 620, 460);
-                    // Icon + label
-                    ctx.fillStyle = "#fff";
-                    ctx.font = "bold 28px sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.fillText(demo.label, 320, 220);
-                    ctx.font = "16px sans-serif";
-                    ctx.fillStyle = "rgba(255,255,255,0.7)";
-                    ctx.fillText("Demo Prop Image", 320, 260);
-                    ctx.fillText("(Replace with actual photo for MWC)", 320, 285);
-
-                    var dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-                    classifyPhoto(dataUrl, demo.type);
+                    // Fetch actual demo photo from server
+                    inspDemoPhotoBtn.disabled = true;
+                    inspDemoPhotoBtn.textContent = "Loading " + demo.label + "...";
+                    fetch("/inspection/demo-photo/" + demo.type)
+                        .then(function(r) {
+                            if (!r.ok) throw new Error("Photo not found");
+                            return r.blob();
+                        })
+                        .then(function(blob) {
+                            var reader = new FileReader();
+                            reader.onloadend = function() {
+                                inspDemoPhotoBtn.disabled = false;
+                                inspDemoPhotoBtn.innerHTML = "&#128193; Load Demo Photo";
+                                classifyPhoto(reader.result, demo.type);
+                            };
+                            reader.readAsDataURL(blob);
+                        })
+                        .catch(function() {
+                            // Fallback: generate canvas placeholder if photo file missing
+                            inspDemoPhotoBtn.disabled = false;
+                            inspDemoPhotoBtn.innerHTML = "&#128193; Load Demo Photo";
+                            var canvas = document.createElement("canvas");
+                            canvas.width = 640; canvas.height = 480;
+                            var ctx = canvas.getContext("2d");
+                            ctx.fillStyle = demo.color + "60";
+                            ctx.fillRect(0, 0, 640, 480);
+                            ctx.fillStyle = "#fff";
+                            ctx.font = "bold 28px sans-serif";
+                            ctx.textAlign = "center";
+                            ctx.fillText(demo.label, 320, 240);
+                            classifyPhoto(canvas.toDataURL("image/jpeg", 0.85), demo.type);
+                        });
                 });
             }
         })();
@@ -5717,12 +5844,28 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 generateBtn.textContent = "\u23f3 Generating...";
                 setStatus("Generating inspection report with local AI...", true);
 
+                // Strip photo_base64 from findings before sending (too large for JSON body)
+                var lightFindings = findings.map(function(f) {
+                    return {
+                        id: f.id,
+                        classification: f.classification,
+                        annotations: f.annotations,
+                        transcript_excerpt: f.transcript_excerpt
+                    };
+                });
+
+                var payload = JSON.stringify({fields: fields, findings: lightFindings});
+                console.log("[Report] Sending " + (payload.length / 1024).toFixed(1) + " KB, " + lightFindings.length + " findings");
+
                 fetch("/inspection/report", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({fields: fields, findings: findings})
+                    body: payload
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) throw new Error("Server returned " + r.status);
+                    return r.json();
+                })
                 .then(function(data) {
                     if (data.error) {
                         setStatus("Report error: " + data.error, false);
@@ -5755,7 +5898,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 })
                 .catch(function(err) {
                     console.error("Report generation failed:", err);
-                    setStatus("Report generation failed", false);
+                    setStatus("Report generation failed: " + (err.message || err), false);
                     generateBtn.disabled = false;
                     generateBtn.textContent = "\ud83d\udcc4 Generate Report";
                 });
@@ -9083,6 +9226,48 @@ DEMO_MODE = False  # Set via --demo-mode flag to bypass offline check for testin
 
 # ── Field Inspection endpoints ──
 
+
+@app.route('/inspection/fluid-dictation', methods=['POST'])
+def inspection_fluid_dictation():
+    """Open or close Windows Voice Typing via keybd_event."""
+    action = (request.json or {}).get("action", "open") if request.is_json else "open"
+    try:
+        import subprocess
+        if action == "close":
+            # Escape key dismisses Voice Typing reliably
+            ps_script = (
+                'Add-Type -TypeDefinition @"\n'
+                'using System; using System.Runtime.InteropServices;\n'
+                'public class KeySender {\n'
+                '  [DllImport("user32.dll")] static extern void keybd_event(byte b,byte s,uint f,UIntPtr e);\n'
+                '  public static void Esc(){\n'
+                '    keybd_event(0x1B,0,0,UIntPtr.Zero); keybd_event(0x1B,0,2,UIntPtr.Zero);\n'
+                '  }\n'
+                '}\n'
+                '"@\n'
+                '[KeySender]::Esc()'
+            )
+        else:
+            # Win+H opens Voice Typing
+            ps_script = (
+                'Add-Type -TypeDefinition @"\n'
+                'using System; using System.Runtime.InteropServices;\n'
+                'public class KeySender {\n'
+                '  [DllImport("user32.dll")] static extern void keybd_event(byte b,byte s,uint f,UIntPtr e);\n'
+                '  public static void WinH(){\n'
+                '    keybd_event(0x5B,0,0,UIntPtr.Zero); keybd_event(0x48,0,0,UIntPtr.Zero);\n'
+                '    keybd_event(0x48,0,2,UIntPtr.Zero); keybd_event(0x5B,0,2,UIntPtr.Zero);\n'
+                '  }\n'
+                '}\n'
+                '"@\n'
+                '[KeySender]::WinH()'
+            )
+        subprocess.Popen(["powershell", "-Command", ps_script])
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # Demo photo classifications — hardcoded for reliable demo with prop images
 _DEMO_CLASSIFICATIONS = {
     "water_damage": {
@@ -9199,6 +9384,19 @@ def inspection_transcribe():
     except Exception as e:
         print(f"[INSPECTION] Transcribe error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/inspection/demo-photo/<photo_type>')
+def inspection_demo_photo(photo_type):
+    """Serve a demo inspection photo by type."""
+    allowed = {"water_damage", "structural_crack", "mold", "electrical_hazard", "trip_hazard"}
+    if photo_type not in allowed:
+        return "Not found", 404
+    photo_path = os.path.join(DEMO_DIR, "inspection_photos", f"{photo_type}.jpg")
+    if not os.path.exists(photo_path):
+        return "Photo not found", 404
+    from flask import send_file as _send_file
+    return _send_file(photo_path, mimetype="image/jpeg")
 
 
 @app.route('/inspection/classify', methods=['POST'])
@@ -9336,7 +9534,7 @@ def inspection_report():
             f"  Confidence: {cls.get('confidence', 0)}%\n"
             f"  Explanation: {cls.get('explanation', 'N/A')}\n"
         )
-        if f.get('annotations', {}).get('extracted_text'):
+        if (f.get('annotations') or {}).get('extracted_text'):
             findings_text += f"  Inspector Note: {f['annotations']['extracted_text']}\n"
 
     inspector_name = fields.get('inspector_name', '')
@@ -9352,10 +9550,11 @@ def inspection_report():
     system_prompt = (
         "You are an inspection report generator. Given structured inspection data, "
         "produce a professional inspection report as clean HTML. Include:\n"
-        "1. Executive summary (2-3 sentences)\n"
-        "2. Finding details with severity and confidence\n"
-        "3. Overall risk rating (Low, Moderate, High, or Critical)\n"
-        "4. Recommended next steps (2-4 bullet points)\n\n"
+        "1. Inspection details header (inspector name, location, date/time, reported issue)\n"
+        "2. Executive summary (2-3 sentences)\n"
+        "3. Finding details with severity and confidence\n"
+        "4. Overall risk rating (Low, Moderate, High, or Critical)\n"
+        "5. Recommended next steps (2-4 bullet points)\n\n"
         "Use these HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>.\n"
         "Use class=\"risk-high\" on the risk rating if High/Critical, "
         "class=\"risk-moderate\" if Moderate, class=\"risk-low\" if Low.\n"
@@ -9378,6 +9577,30 @@ def inspection_report():
         _track_model_call(response, elapsed)
 
         report_html = (response.choices[0].message.content or "").strip()
+
+        # Strip markdown code fences the model sometimes wraps around HTML
+        if report_html.startswith("```"):
+            first_newline = report_html.find("\n")
+            if first_newline > 0:
+                report_html = report_html[first_newline + 1:]
+            if report_html.endswith("```"):
+                report_html = report_html[:-3].strip()
+
+        # Prepend inspection details header if model didn't include them
+        _loc = fields.get('location', '')
+        _dt = fields.get('datetime', '')
+        if _loc and _loc.lower() not in report_html.lower():
+            details_header = (
+                '<div style="margin-bottom:12px; padding:10px; '
+                'background:rgba(255,255,255,0.05); border-radius:6px; '
+                'font-size:0.9em; line-height:1.6;">'
+                f'<strong>Inspector:</strong> {inspector_name or "Not specified"} &nbsp;|&nbsp; '
+                f'<strong>Location:</strong> {_loc or "Not specified"} &nbsp;|&nbsp; '
+                f'<strong>Date:</strong> {_dt or "Not specified"}<br>'
+                f'<strong>Reported Issue:</strong> {fields.get("reported_issue", "Not specified")}'
+                '</div>'
+            )
+            report_html = details_header + report_html
 
         # Extract summary and risk rating from the generated HTML
         summary = ""
@@ -9506,6 +9729,14 @@ def inspection_translate():
         _track_model_call(response, elapsed)
 
         translated = (response.choices[0].message.content or "").strip()
+
+        # Strip markdown code fences
+        if translated.startswith("```"):
+            first_newline = translated.find("\n")
+            if first_newline > 0:
+                translated = translated[first_newline + 1:]
+            if translated.endswith("```"):
+                translated = translated[:-3].strip()
 
         tokens_used = 0
         if hasattr(response, 'usage') and response.usage:
