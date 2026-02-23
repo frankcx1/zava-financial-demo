@@ -1,0 +1,30 @@
+# Create self-signed cert for MSIX signing (CN=FrankBu)
+$existing = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq 'CN=FrankBu' }
+if ($existing) {
+    Write-Host "Certificate already exists:"
+    Write-Host "  Thumbprint: $($existing.Thumbprint)"
+    Write-Host "  Subject: $($existing.Subject)"
+    Write-Host "  Expires: $($existing.NotAfter)"
+} else {
+    Write-Host "Creating self-signed certificate for CN=FrankBu..."
+    $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=FrankBu' -KeyUsage DigitalSignature -FriendlyName 'NPU Vision Service Dev' -CertStoreLocation 'Cert:\CurrentUser\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+    Write-Host "  Thumbprint: $($cert.Thumbprint)"
+    Write-Host "  Subject: $($cert.Subject)"
+    $existing = $cert
+}
+
+# Export and trust
+$certPath = Join-Path $PSScriptRoot 'FrankBu.cer'
+Export-Certificate -Cert $existing -FilePath $certPath | Out-Null
+Write-Host "Certificate exported to $certPath"
+
+# Trust it (requires admin - may fail)
+try {
+    Import-Certificate -FilePath $certPath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+    Write-Host "Certificate trusted in LocalMachine\TrustedPeople"
+} catch {
+    Write-Host "WARNING: Could not auto-trust cert (needs admin). Run manually:"
+    Write-Host "  Import-Certificate -FilePath $certPath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople'"
+}
+
+Write-Host "`nThumbprint for signing: $($existing.Thumbprint)"
