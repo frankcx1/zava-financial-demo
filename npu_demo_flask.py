@@ -5929,7 +5929,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             // Pen style
             var PEN_COLOR = "#ef4444";
-            var PEN_WIDTH = 3;
+            var PEN_WIDTH = 7;
 
             function openAnnotation(findingId) {
                 var findings = window._inspFindings || [];
@@ -9967,6 +9967,34 @@ def inspection_annotate():
                 text = result.get('extracted_text', '').strip()
             if text and 'error' not in result:
                 print(f"[INSPECTION] Annotation via Phi Silica Vision: {text[:120]}")
+                # Post-process with Phi-4 Mini to extract handwritten text
+                try:
+                    _pp_start = _time.time()
+                    pp_response = foundry_chat(
+                        model=DEFAULT_MODEL,
+                        messages=[
+                            {"role": "system", "content":
+                                "An inspector annotated a building inspection photo with handwritten "
+                                "text in red ink. A vision model described the annotated image. "
+                                "Your job: extract and transcribe the inspector's handwritten annotations. "
+                                "Focus on any words, labels, arrows with text, or written notes. "
+                                "If the vision description mentions text (even partial), reconstruct "
+                                "the most likely intended words. Output ONLY the inspector's note "
+                                "as a short sentence. If no text was written, summarize what the "
+                                "inspector marked (e.g. 'Arrow pointing to ceiling stain')."},
+                            {"role": "user", "content": f"Vision description: {text}"},
+                        ],
+                        max_tokens=80,
+                        temperature=0.2,
+                    )
+                    _pp_elapsed = _time.time() - _pp_start
+                    _track_model_call(pp_response, _pp_elapsed)
+                    refined = (pp_response.choices[0].message.content or "").strip().strip('"').strip("'")
+                    if refined:
+                        print(f"[INSPECTION] Refined annotation: {refined[:120]}")
+                        text = refined
+                except Exception as pp_err:
+                    print(f"[INSPECTION] Annotation refinement skipped: {pp_err}")
                 return jsonify({
                     "extracted_text": text,
                     "tokens_used": result.get('tokens_used', 0),
