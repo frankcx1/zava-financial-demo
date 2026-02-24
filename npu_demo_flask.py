@@ -73,7 +73,7 @@ else:
     MODEL_ALIAS = "phi-4-mini"
     MODEL_LABEL = "Phi-4 Mini"
 
-# --- Model initialization via Foundry Local SDK (fallback to localhost:5272) ---
+# --- Model initialization via Foundry Local SDK (NPU → GPU → localhost:5272 fallback) ---
 print(f"Starting Foundry Local runtime (model: {MODEL_ALIAS})...", flush=True)
 FOUNDRY_AVAILABLE = False
 try:
@@ -83,10 +83,22 @@ try:
     client = OpenAI(base_url=manager.endpoint, api_key=manager.api_key)
     DEFAULT_MODEL = MODEL_ID
     FOUNDRY_AVAILABLE = True
-except Exception:
-    manager = None
-    client = OpenAI(base_url="http://localhost:5272/v1", api_key="not-needed")
-    DEFAULT_MODEL = MODEL_ALIAS
+except Exception as _npu_err:
+    # NPU variant may fail on some devices (e.g. Lunar Lake driver issue) — try GPU
+    try:
+        from foundry_local.api import DeviceType
+        manager = FoundryLocalManager(MODEL_ALIAS, device=DeviceType.GPU)
+        # get_model_info returns NPU ID even with GPU device — use list_loaded_models instead
+        _loaded = manager.list_loaded_models()
+        MODEL_ID = _loaded[0].id if _loaded else manager.get_model_info(MODEL_ALIAS).id
+        client = OpenAI(base_url=manager.endpoint, api_key=manager.api_key)
+        DEFAULT_MODEL = MODEL_ID
+        FOUNDRY_AVAILABLE = True
+        print(f"  NPU unavailable ({_npu_err}), using GPU variant", flush=True)
+    except Exception:
+        manager = None
+        client = OpenAI(base_url="http://localhost:5272/v1", api_key="not-needed")
+        DEFAULT_MODEL = MODEL_ALIAS
 
 import threading as _threading
 _reconnect_lock = _threading.Lock()
@@ -103,9 +115,21 @@ def _reconnect_foundry():
             FOUNDRY_AVAILABLE = True
             print(f"  Reconnected to Foundry: {manager.endpoint}", flush=True)
             return True
-        except Exception as e:
-            print(f"  Reconnect failed: {e}", flush=True)
-            return False
+        except Exception:
+            # NPU failed — try GPU
+            try:
+                from foundry_local.api import DeviceType
+                manager = FoundryLocalManager(MODEL_ALIAS, device=DeviceType.GPU)
+                _loaded = manager.list_loaded_models()
+                MODEL_ID = _loaded[0].id if _loaded else manager.get_model_info(MODEL_ALIAS).id
+                client = OpenAI(base_url=manager.endpoint, api_key=manager.api_key)
+                DEFAULT_MODEL = MODEL_ID
+                FOUNDRY_AVAILABLE = True
+                print(f"  Reconnected to Foundry (GPU): {manager.endpoint}", flush=True)
+                return True
+            except Exception as e:
+                print(f"  Reconnect failed: {e}", flush=True)
+                return False
 
 def foundry_chat(retries=1, **kwargs):
     """Wrapper around client.chat.completions.create with auto-reconnect."""
@@ -5851,7 +5875,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                             reader.onloadend = function() {
                                 inspDemoPhotoBtn.disabled = false;
                                 inspDemoPhotoBtn.innerHTML = "&#128193; Load Demo Photo";
-                                classifyPhoto(reader.result, demo.type);
+                                // Send real image to Phi Silica Vision; fall back to demo preset if vision unavailable
+                                classifyPhoto(reader.result, null);
                             };
                             reader.readAsDataURL(blob);
                         })
@@ -6072,23 +6097,14 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     }
                 }
 
-                // 2. Render ink on white background in black → PNG for OCR
-                var ocrCanvas = document.createElement("canvas");
-                ocrCanvas.width = baseCanvas.width;
-                ocrCanvas.height = baseCanvas.height;
-                var ocrCtx = ocrCanvas.getContext("2d");
-                ocrCtx.fillStyle = "#ffffff";
-                ocrCtx.fillRect(0, 0, ocrCanvas.width, ocrCanvas.height);
-                for (var i = 0; i < strokes.length; i++) {
-                    drawStroke(ocrCtx, strokes[i], "#000000", PEN_WIDTH + 1);
-                }
-                var ocrDataUrl = ocrCanvas.toDataURL("image/png");
-                var ocrBlob = dataURLtoBlob4(ocrDataUrl);
+                // 2. Send composite image (photo + ink overlay) to Phi Silica Vision
+                //    The vision model describes the annotated photo — much richer than ink-only OCR
+                var compositeBlob = dataURLtoBlob4(compositeDataUrl);
 
                 // 3. POST to /inspection/annotate
                 var statusText = document.getElementById("inspStatusText");
                 var statusDot = document.getElementById("inspStatusDot");
-                if (statusText) statusText.textContent = "Extracting handwritten text...";
+                if (statusText) statusText.textContent = "Analyzing annotated photo with Phi Silica Vision...";
                 if (statusDot) statusDot.classList.add("processing");
 
                 var savedFindingId = currentFindingId;
@@ -6096,7 +6112,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 closeAnnotation();
 
                 var fd = new FormData();
-                fd.append("image", ocrBlob, "annotation.png");
+                fd.append("image", compositeBlob, "annotated_photo.jpg");
                 fd.append("finding_id", savedFindingId);
 
                 fetch("/inspection/annotate", { method: "POST", body: fd })
@@ -6111,10 +6127,23 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         }
                         window._inspFindings = findings;
 
-                        // Show annotation note
+                        // Show annotation note in classification card area
                         if (annotationNote && annotationText && data.extracted_text) {
                             annotationText.textContent = data.extracted_text;
                             annotationNote.style.display = "block";
+                        }
+
+                        // Also show inspector note in the findings log panel
+                        if (data.extracted_text && inspFindingsEl) {
+                            var findingItems = inspFindingsEl.querySelectorAll(".finding-item");
+                            var targetItem = findingItems[savedFindingId - 1];
+                            if (targetItem && !targetItem.querySelector(".finding-note")) {
+                                var noteEl = document.createElement("div");
+                                noteEl.className = "finding-note";
+                                noteEl.style.cssText = "margin-top:6px;padding:6px 8px;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:4px;font-size:0.82em;color:rgba(255,255,255,0.75);line-height:1.4;";
+                                noteEl.innerHTML = '<span style="color:#ef4444;font-weight:600;font-size:0.8em;text-transform:uppercase;letter-spacing:0.3px;">&#9998; Inspector Note</span><br>' + data.extracted_text;
+                                targetItem.appendChild(noteEl);
+                            }
                         }
 
                         // Update status
@@ -6149,9 +6178,22 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                 stroke_count: savedStrokeCount
                             };
                         }
+                        var fallbackNote = "Check pipe above - possible leak source";
                         if (annotationNote && annotationText) {
-                            annotationText.textContent = "Check pipe above - possible leak source";
+                            annotationText.textContent = fallbackNote;
                             annotationNote.style.display = "block";
+                        }
+                        // Show fallback note in findings log panel
+                        if (inspFindingsEl) {
+                            var findingItems2 = inspFindingsEl.querySelectorAll(".finding-item");
+                            var targetItem2 = findingItems2[savedFindingId - 1];
+                            if (targetItem2 && !targetItem2.querySelector(".finding-note")) {
+                                var noteEl2 = document.createElement("div");
+                                noteEl2.className = "finding-note";
+                                noteEl2.style.cssText = "margin-top:6px;padding:6px 8px;background:rgba(239,68,68,0.08);border-left:3px solid #ef4444;border-radius:4px;font-size:0.82em;color:rgba(255,255,255,0.75);line-height:1.4;";
+                                noteEl2.innerHTML = '<span style="color:#ef4444;font-weight:600;font-size:0.8em;text-transform:uppercase;letter-spacing:0.3px;">&#9998; Inspector Note</span><br>' + fallbackNote;
+                                targetItem2.appendChild(noteEl2);
+                            }
                         }
                         var completed = window._inspCompletedTasks || [];
                         if (completed.indexOf("Pen annotation") === -1) {
@@ -9900,18 +9942,26 @@ def inspection_annotate():
     if not image_file:
         return jsonify({"error": "No image provided"}), 400
 
-    # Tier 1: Try Phi Silica Vision extract-text endpoint
+    # Tier 1: Try Phi Silica Vision /describe endpoint with annotated photo
+    # Sends the composite image (photo + ink overlay) for a detailed description
+    # that captures both the defect and the inspector's visual annotations
     try:
         import requests as _req
         image_bytes = image_file.read()
-        files = {'image': (image_file.filename or 'annotation.png', image_bytes,
-                           image_file.content_type or 'image/png')}
-        vision_resp = _req.post('http://localhost:5100/extract-text', files=files, timeout=30)
+        files = {'image': (image_file.filename or 'annotated_photo.jpg', image_bytes,
+                           image_file.content_type or 'image/jpeg')}
+        # Use /describe (detailed) for richer output than /extract-text
+        vision_resp = _req.post('http://localhost:5100/describe',
+                                files=files,
+                                data={'kind': 'detailed'},
+                                timeout=30)
         if vision_resp.status_code == 200:
             result = vision_resp.json()
-            text = result.get('text', '').strip()
+            text = result.get('description', '').strip()
+            if not text:
+                text = result.get('extracted_text', '').strip()
             if text and 'error' not in result:
-                print(f"[INSPECTION] Annotation OCR via Phi Silica: {text[:80]}")
+                print(f"[INSPECTION] Annotation via Phi Silica Vision: {text[:120]}")
                 return jsonify({
                     "extracted_text": text,
                     "tokens_used": result.get('tokens_used', 0),
@@ -9920,7 +9970,7 @@ def inspection_annotate():
                     "status": "ok"
                 })
     except Exception as e:
-        print(f"[INSPECTION] Vision extract-text unavailable: {e}")
+        print(f"[INSPECTION] Vision describe unavailable: {e}")
 
     # Tier 2: Phi-4 Mini text fallback — generate plausible inspector note
     model = DEFAULT_MODEL
@@ -10017,9 +10067,11 @@ def inspection_report():
         "1. Inspection details header (inspector name, location, date/time, reported issue)\n"
         "2. Executive summary (2-3 sentences)\n"
         "3. Finding details with severity and confidence\n"
-        "4. Overall risk rating (Low, Moderate, High, or Critical)\n"
-        "5. Recommended next steps (2-4 bullet points)\n\n"
-        "Use these HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>.\n"
+        "4. Inspector notes — if an Inspector Note is provided for a finding, "
+        "incorporate it prominently in that finding's section as a quoted observation\n"
+        "5. Overall risk rating (Low, Moderate, High, or Critical)\n"
+        "6. Recommended next steps (2-4 bullet points)\n\n"
+        "Use these HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <blockquote>.\n"
         "Use class=\"risk-high\" on the risk rating if High/Critical, "
         "class=\"risk-moderate\" if Moderate, class=\"risk-low\" if Low.\n"
         "Keep language professional and concise. No markdown — only HTML."
