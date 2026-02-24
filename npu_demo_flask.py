@@ -5406,6 +5406,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     inspTranscript.textContent = text;
                     inspTranscript.classList.add("visible");
                 }
+                // Expose globally so M3 findings can attach voice context
+                window._inspLastTranscript = text;
             }
 
             // Send transcript to backend for field extraction
@@ -5672,7 +5674,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     classification: result,
                     photo_base64: photoDataUrl,
                     annotations: null,
-                    transcript_excerpt: null
+                    transcript_excerpt: window._inspLastTranscript || null
                 };
                 inspFindings.push(finding);
                 window._inspFindings = inspFindings;
@@ -5913,6 +5915,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             var annotateBtn = document.getElementById("inspAnnotateBtn");
             var annotationNote = document.getElementById("inspAnnotationNote");
             var annotationText = document.getElementById("inspAnnotationText");
+            var inspFindingsEl = document.getElementById("inspFindings");
 
             if (!lightbox || !baseCanvas || !inkCanvas) return;
 
@@ -6170,15 +6173,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                         if (statusText) statusText.textContent = "Annotation saved (text extraction unavailable)";
                         if (statusDot) statusDot.classList.remove("processing");
 
-                        // Still mark as annotated with fallback
+                        // Only set fallback if annotations weren't already set by .then()
                         var f = findings[savedFindingId - 1];
-                        if (f) {
+                        var fallbackNote = "Check pipe above - possible leak source";
+                        if (f && !(f.annotations && f.annotations.extracted_text)) {
                             f.annotations = {
-                                extracted_text: "Check pipe above - possible leak source",
+                                extracted_text: fallbackNote,
                                 stroke_count: savedStrokeCount
                             };
+                        } else if (f && f.annotations) {
+                            fallbackNote = f.annotations.extracted_text;
                         }
-                        var fallbackNote = "Check pipe above - possible leak source";
                         if (annotationNote && annotationText) {
                             annotationText.textContent = fallbackNote;
                             annotationNote.style.display = "block";
@@ -10050,6 +10055,8 @@ def inspection_report():
         )
         if (f.get('annotations') or {}).get('extracted_text'):
             findings_text += f"  Inspector Note: {f['annotations']['extracted_text']}\n"
+        if f.get('transcript_excerpt'):
+            findings_text += f"  Voice Notes: {f['transcript_excerpt']}\n"
 
     inspector_name = fields.get('inspector_name', '')
     inspection_data = (
@@ -10067,8 +10074,8 @@ def inspection_report():
         "1. Inspection details header (inspector name, location, date/time, reported issue)\n"
         "2. Executive summary (2-3 sentences)\n"
         "3. Finding details with severity and confidence\n"
-        "4. Inspector notes — if an Inspector Note is provided for a finding, "
-        "incorporate it prominently in that finding's section as a quoted observation\n"
+        "4. Inspector notes — if an Inspector Note or Voice Notes are provided for a finding, "
+        "incorporate them prominently in that finding's section as a quoted observation\n"
         "5. Overall risk rating (Low, Moderate, High, or Critical)\n"
         "6. Recommended next steps (2-4 bullet points)\n\n"
         "Use these HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <blockquote>.\n"
