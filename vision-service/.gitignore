@@ -1,3 +1,8 @@
 bin/
 obj/
-AppPackages/
+
+# Include the main MSIX + install script, exclude bulk dependencies (~121MB runtime MSIXes)
+AppPackages/**/Dependencies/
+AppPackages/**/Add-AppDevPackage.resources/
+AppPackages/**/Add-AppDevPackage.ps1
+AppPackages/**/*.cer

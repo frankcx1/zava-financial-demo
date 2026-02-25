@@ -241,9 +241,83 @@ try {
 Write-Host ""
 
 # ============================================================
-# Step 7: Pre-download model (optional but saves time on first run)
+# Step 7: Vision Service (Phi Silica MSIX)
 # ============================================================
-Write-Host "Step 7: Checking model availability..." -ForegroundColor Yellow
+Write-Host "Step 7: Setting up Vision Service (Phi Silica)..." -ForegroundColor Yellow
+
+$visionServiceDir = Join-Path $ScriptDir "vision-service"
+$msixTestDir = Join-Path $visionServiceDir "AppPackages\vision-service_1.0.0.0_x64_Test"
+$msixPath = Join-Path $msixTestDir "vision-service_1.0.0.0_x64.msix"
+
+if (Test-Path $msixPath) {
+    # Check if already installed
+    $existingPkg = Get-AppxPackage -Name 'Microsoft.NPUDemo.VisionService' -ErrorAction SilentlyContinue
+    if ($existingPkg) {
+        Write-Host "[OK] Vision Service already installed" -ForegroundColor Green
+        Write-Host "   PFN: $($existingPkg.PackageFamilyName)" -ForegroundColor Gray
+    } else {
+        Write-Host "Installing Vision Service MSIX..." -ForegroundColor Cyan
+
+        # Step 7a: Create and trust the signing certificate
+        Write-Host "   Setting up signing certificate..." -ForegroundColor Gray
+        $certScript = Join-Path $visionServiceDir "scripts\setup-cert.ps1"
+        if (Test-Path $certScript) {
+            try {
+                & $certScript
+                Write-Host "   [OK] Certificate configured" -ForegroundColor Green
+            } catch {
+                Write-Host "   [WARN] Certificate setup needs admin. Run manually:" -ForegroundColor Yellow
+                Write-Host "      powershell -ExecutionPolicy Bypass -File `"$certScript`"" -ForegroundColor Cyan
+            }
+        }
+
+        # Step 7b: Install Windows App Runtime 1.8 dependency
+        Write-Host "   Installing Windows App Runtime 1.8..." -ForegroundColor Gray
+        try {
+            winget install Microsoft.WindowsAppRuntime.1.8 --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            Write-Host "   [OK] Windows App Runtime 1.8 installed" -ForegroundColor Green
+        } catch {
+            Write-Host "   [WARN] Could not install via winget. Trying MSIX dependency..." -ForegroundColor Yellow
+            $runtimeMsix = Join-Path $msixTestDir "Dependencies\x64\Microsoft.WindowsAppRuntime.1.8.msix"
+            if (Test-Path $runtimeMsix) {
+                try {
+                    Add-AppxPackage -Path $runtimeMsix -ErrorAction SilentlyContinue
+                    Write-Host "   [OK] Windows App Runtime installed from MSIX" -ForegroundColor Green
+                } catch {
+                    Write-Host "   [WARN] Runtime install failed — Vision Service may not start" -ForegroundColor Yellow
+                }
+            }
+        }
+
+        # Step 7c: Install the Vision Service MSIX
+        Write-Host "   Installing Vision Service package..." -ForegroundColor Gray
+        try {
+            Add-AppxPackage -Path $msixPath
+            $pkg = Get-AppxPackage -Name 'Microsoft.NPUDemo.VisionService' -ErrorAction SilentlyContinue
+            if ($pkg) {
+                Write-Host "   [OK] Vision Service installed" -ForegroundColor Green
+                Write-Host "   PFN: $($pkg.PackageFamilyName)" -ForegroundColor Gray
+            } else {
+                Write-Host "   [WARN] Install command ran but package not found" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "   [FAIL] Could not install MSIX. Common fixes:" -ForegroundColor Red
+            Write-Host "      1. Trust the signing cert (run vision-service\scripts\setup-cert.ps1 as admin)" -ForegroundColor Yellow
+            Write-Host "      2. Enable Developer Mode (Settings > For developers)" -ForegroundColor Yellow
+            Write-Host "      3. Rebuild from source: vision-service\scripts\rebuild-msix.ps1" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "[SKIP] Pre-built MSIX not found at: $msixPath" -ForegroundColor Gray
+    Write-Host "   To build from source: vision-service\scripts\rebuild-msix.ps1" -ForegroundColor Cyan
+}
+
+Write-Host ""
+
+# ============================================================
+# Step 8: Pre-download model (optional but saves time on first run)
+# ============================================================
+Write-Host "Step 8: Checking model availability..." -ForegroundColor Yellow
 
 if ($foundryInstalled) {
     try {
@@ -288,6 +362,9 @@ Write-Host ""
 Write-Host "   Or double-click: run.bat" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Then open: http://localhost:5000" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "For Field Inspection vision features, also launch the Vision Service:" -ForegroundColor Green
+Write-Host "   powershell -File `"$ScriptDir\vision-service\scripts\launch-vision.ps1`"" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "No VS Code or AI Toolkit required!" -ForegroundColor Green
 Write-Host "Silicon auto-detected: the app will brand itself for $chipLabel." -ForegroundColor Gray
