@@ -78,6 +78,8 @@ Phi-4 Mini 3.8B on NPU
 
 ## Quick Start
 
+**New to this?** See the **[Quick Start Guide for Non-Developers](docs/QUICK_START.md)** — step-by-step instructions with no coding required, plus a troubleshooting prompt you can paste into any AI assistant if you get stuck.
+
 ### Prerequisites
 
 - Windows 11 24H2 on a Copilot+ PC (Intel Core Ultra or Snapdragon X)
@@ -85,7 +87,7 @@ Phi-4 Mini 3.8B on NPU
 
 ### Option 1: One-Click Setup
 
-1. Run `setup.ps1` as Administrator (installs Python dependencies + verifies Foundry Local)
+1. Run `setup.ps1` (installs Python, Foundry Local, dependencies, and Vision Service)
 2. Double-click `run.bat`
 3. Open http://localhost:5000
 
@@ -96,7 +98,7 @@ pip install -r requirements.txt
 python npu_demo_flask.py
 ```
 
-On first run, Foundry Local will download the Phi-4 Mini model (~2 GB). Subsequent launches start in seconds.
+On first run, Foundry Local will download the Phi-4 Mini model (~3 GB). Subsequent launches start in seconds.
 
 ---
 
@@ -104,10 +106,13 @@ On first run, Foundry Local will download the Phi-4 Mini model (~2 GB). Subseque
 
 | File | Description |
 |------|-------------|
-| `npu_demo_flask.py` | Main demo application (~8,100 lines, single file with HTML/CSS/JS inline) |
+| `npu_demo_flask.py` | Main demo application (~10,000 lines, single file with HTML/CSS/JS inline) |
 | `run.bat` | One-click launcher — installs deps and copies demo data if needed |
-| `setup.ps1` | First-time setup script (run as Administrator) |
+| `setup.ps1` | First-time setup script (Python, Foundry Local, Vision Service, all deps) |
 | `requirements.txt` | Python dependencies |
+| `vision-service/` | C# Phi Silica Vision microservice (MSIX, localhost:5100) |
+| `docs/QUICK_START.md` | Non-developer setup guide with troubleshooting AI prompt |
+| `docs/FIELD_INSPECTION_WORKFLOW.md` | Complete Field Inspection on-device AI workflow write-up |
 | `surface-logo.png` | Microsoft Surface logo |
 | `copilot-logo.avif` | Copilot+ PC logo |
 | `tesseract/` | Offline OCR engine (Tesseract.js + English training data) |
