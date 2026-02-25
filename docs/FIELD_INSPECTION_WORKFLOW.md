@@ -287,8 +287,21 @@ This handles:
 
 - **Windows 11** with Copilot+ PC features (NPU required)
 - **Windows App SDK 1.8** runtime (installed automatically with MSIX)
-- The Phi Silica on-device AI model must be available (controlled by Windows Settings > Privacy & Security > AI models)
+- **Phi Silica model must be provisioned** (see below)
 - On retail Windows builds, the LAF token must match the MSIX signing certificate's PFN
+
+### Provisioning Phi Silica (Important)
+
+Phi Silica is a Windows-managed on-device model. It is not automatically available just because the hardware supports it — Windows must download and register the model before any app can use it. The most reliable way to provision it on a new device:
+
+1. Install **VS Code** with the **AI Toolkit** extension
+2. Open the AI Toolkit sidebar and go to **Model Catalog**
+3. Find **Phi Silica** and open it in the **Playground**
+4. Send a test message in the chat window and confirm you get a response
+
+This triggers Windows to call `EnsureReadyAsync()` under the hood, which downloads and deploys the model weights to the system model cache. After this, any application calling `ImageDescriptionGenerator.GetReadyState()` or `LanguageModel.GetReadyState()` — including our Vision Service — will find Phi Silica available.
+
+Without this step, the Vision Service's `/health` endpoint may report `phi_silica_available: false`, and photo classification will fall back to the Phi-4 Mini text path.
 
 ### Known Constraints
 
@@ -313,3 +326,17 @@ This handles:
 | **Fluid Dictation** | Windows system service (Win+H) | Speech-to-text on NPU |
 
 Every component runs on `127.0.0.1`. The three-tier fallback pattern (preferred AI path -> alternate AI path -> hardcoded safe default) ensures the demo never fails, even if individual services are unavailable. The entire workflow completes in airplane mode with zero network calls.
+
+---
+
+## How This Project Started
+
+This project began with a simple observation: chatting with Phi Silica in the VS Code AI Toolkit playground and realizing that if you can talk to an on-device model through a local interface, you can build a full application around it — the same way LM Studio exposes models via a local port for any app to consume.
+
+The question was: why not wrap Phi Silica access in a Flask app and see what's possible with a local-only AI stack?
+
+The first iterations were built through back-and-forth with Claude on the web — write code, download it, test on the Surface, paste feedback, iterate. Eventually the workflow moved to Claude Code (Anthropic's CLI tool), which could read and edit the codebase directly. From there the project grew rapidly: a single-file Flask app expanding from a simple chat interface to five full tabs with tool-calling shims, governed AI agents, voice capture, camera integration, pen annotation, vision classification, report generation, and translation — all running on-device at ~5W on the NPU.
+
+The Vision Service and its MSIX packaging came from needing to access Phi Silica's vision capabilities, which require a packaged app with a `systemAIModels` capability and a LAF (Limited Access Feature) token from Microsoft. Working through the Windows App SDK documentation, the MSIX signing requirements, and the LAF token attestation process was one of the more involved pieces of the build.
+
+The result is ~10,000 lines of code in a single Flask file, a companion C# vision microservice, and a complete demo that runs seven distinct AI tasks with zero cloud calls, zero cost, and zero data leaving the device.

@@ -363,10 +363,14 @@ Write-Host "   Or double-click: run.bat" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Then open: http://localhost:5000" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "For Field Inspection vision features, also launch the Vision Service:" -ForegroundColor Green
-Write-Host "   powershell -File `"$ScriptDir\vision-service\scripts\launch-vision.ps1`"" -ForegroundColor Cyan
+Write-Host "For Field Inspection vision features (Phi Silica):" -ForegroundColor Green
+Write-Host "   1. Provision Phi Silica: open VS Code AI Toolkit > Model Catalog >" -ForegroundColor Cyan
+Write-Host "      find Phi Silica > Playground > send a test message (one-time)" -ForegroundColor Cyan
+Write-Host "   2. Launch the Vision Service:" -ForegroundColor Cyan
+Write-Host "      powershell -File `"$ScriptDir\vision-service\scripts\launch-vision.ps1`"" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "No VS Code or AI Toolkit required!" -ForegroundColor Green
+Write-Host "No VS Code or AI Toolkit required for the main app!" -ForegroundColor Green
+Write-Host "(AI Toolkit is only needed once to provision the Phi Silica model)" -ForegroundColor Gray
 Write-Host "Silicon auto-detected: the app will brand itself for $chipLabel." -ForegroundColor Gray
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
