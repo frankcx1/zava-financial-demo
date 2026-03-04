@@ -773,12 +773,22 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             color: #22c55e;
             font-weight: 500;
         }
+        .savings-stat-hero {
+            font-size: 1.35em;
+            font-weight: 700;
+            color: #22c55e;
+            margin: 6px 0;
+            line-height: 1.3;
+            text-shadow: 0 0 12px rgba(34, 197, 94, 0.3);
+        }
         .sidebar.collapsed .savings-widget {
             padding: 8px;
             text-align: center;
         }
         .sidebar.collapsed .savings-header,
-        .sidebar.collapsed .savings-stat:not(.savings-stat-compact) { display: none; }
+        .sidebar.collapsed .savings-stat:not(.savings-stat-compact),
+        .sidebar.collapsed .savings-stat-hero,
+        .sidebar.collapsed .poc-footer { display: none; }
         .savings-stat-compact { display: none; }
         .sidebar.collapsed .savings-stat-compact {
             display: block;
@@ -990,7 +1000,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .suggestion-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
             max-width: 720px;
             width: 100%;
@@ -1033,6 +1043,65 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             max-height: 80px; overflow-y: auto; opacity: 0.8;
         }
         .health-ai-summary { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }
+
+        /* Proof-of-concept disclaimer banners */
+        .poc-banner {
+            background: #FFF3CD;
+            color: #856404;
+            border: 1px solid #FFEEBA;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+        .poc-banner strong { font-weight: 700; }
+        .poc-footer {
+            color: rgba(255,255,255,0.4);
+            font-size: 0.75em;
+            line-height: 1.5;
+            padding: 10px 12px;
+            margin-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+        }
+
+        /* Device Search results */
+        .device-search-container {
+            margin: 8px 0; padding: 10px 14px;
+            background: rgba(255,255,255,0.03); border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .device-search-container input[type="text"] {
+            width: 100%; padding: 8px 12px; font-size: 0.9em;
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px; color: #fff; outline: none;
+        }
+        .device-search-container input[type="text"]:focus {
+            border-color: rgba(0,188,242,0.5);
+        }
+        .device-search-container .search-bar {
+            display: flex; gap: 8px; align-items: center;
+        }
+        .device-search-container .search-bar button {
+            padding: 8px 16px; font-size: 0.85em; white-space: nowrap;
+            background: rgba(0,188,242,0.2); border: 1px solid rgba(0,188,242,0.4);
+            border-radius: 6px; color: #00BCF2; cursor: pointer;
+        }
+        .device-search-container .search-bar button:hover {
+            background: rgba(0,188,242,0.3);
+        }
+        .search-result-item {
+            margin: 6px 0; padding: 8px 12px;
+            background: rgba(255,255,255,0.03); border-radius: 6px;
+            border-left: 3px solid rgba(0,188,242,0.4); font-size: 0.85em;
+        }
+        .search-result-item .sr-name { font-weight: 600; color: #7fdbff; }
+        .search-result-item .sr-path {
+            font-family: 'Cascadia Code', 'Consolas', monospace;
+            font-size: 0.78em; opacity: 0.4; margin: 2px 0;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .search-result-item .sr-meta { font-size: 0.8em; opacity: 0.6; }
 
         /* Inline action buttons in chat messages */
         .inline-action-btn {
@@ -1327,7 +1396,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .tool-card .tool-ok { color: #00CC6A; }
         .tool-card .tool-fail { color: #FF4444; }
-        .tool-card .tool-time { opacity: 0.6; font-size: 0.9em; }
+        .tool-time { font-size: 0.88em; color: rgba(0,188,242,0.7); opacity: 1; }
+        .tool-card .tool-time { opacity: 0.8; font-size: 0.9em; }
 
         /* Approval Gate Card */
         .approval-card {
@@ -2369,11 +2439,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
           <div class="savings-widget" id="savingsWidget">
             <div class="savings-header">&#128994; LOCAL AI SESSION</div>
             <div class="savings-stat" id="savingsCalls">0 calls &middot; 0 tokens</div>
-            <div class="savings-stat" id="savingsCost">&#128176; $0.00 saved vs cloud</div>
+            <div class="savings-stat savings-stat-hero" id="savingsCost">&#128176; $0.00 saved vs cloud</div>
             <div class="savings-stat" id="savingsPower">&#9889; 0 Wh local &middot; 0 Wh cloud</div>
-            <div class="savings-stat" id="savingsCO2">&#127793; 0g CO&#8322; avoided</div>
+            <div class="savings-stat savings-stat-hero" id="savingsCO2">&#127793; 0g CO&#8322; avoided</div>
             <div class="savings-stat savings-stat-compact" id="savingsCompact">&#128994; $0.00</div>
           </div>
+          <div class="poc-footer">This application is a proof-of-concept demonstration of on-device AI development patterns on Copilot+ PCs. Individual features are architectural demonstrations and are not validated for production use.</div>
           <span class="badge" style="text-align:center;">&#9889; {{CHIP_LABEL}}</span>
           <span class="offline-badge" id="offlineBadge">Online</span>
           <div class="sidebar-footer-controls">
@@ -2471,25 +2542,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <!-- Suggestion chips (directly under tabs) -->
             <div class="chat-empty-state" id="chatEmptyState">
               <div class="suggestion-grid">
-                <button class="suggestion-chip" data-action="meeting-agenda">
-                  <span class="chip-icon">&#128203;</span>
-                  <span>Meeting Agenda</span>
-                </button>
-                <button class="suggestion-chip" data-action="analyze-strategy">
-                  <span class="chip-icon">&#128196;</span>
-                  <span>Analyze Strategy</span>
-                </button>
-                <button class="suggestion-chip" data-action="list-documents">
-                  <span class="chip-icon">&#128193;</span>
-                  <span>List Documents</span>
-                </button>
-                <button class="suggestion-chip" data-action="summarize-doc">
-                  <span class="chip-icon">&#128221;</span>
-                  <span>Summarize a Document</span>
-                </button>
                 <button class="suggestion-chip" data-action="device-health">
                   <span class="chip-icon">&#128737;</span>
                   <span>Device Health</span>
+                </button>
+                <button class="suggestion-chip" data-action="security-audit">
+                  <span class="chip-icon">&#128272;</span>
+                  <span>Security Audit</span>
+                </button>
+                <button class="suggestion-chip" data-action="device-search">
+                  <span class="chip-icon">&#128269;</span>
+                  <span>Device Search</span>
                 </button>
               </div>
             </div>
@@ -2560,6 +2623,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         <!-- Auditor Tab (unified: structured analysis + smart escalation) -->
         <div id="auditor-tab" class="tab-content">
+
+            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- This is a demonstration of on-device AI document processing architecture. It is not a validated compliance tool or production application and should not be used for actual compliance auditing. Organizations should validate any compliance workflow against their specific regulatory requirements.</div>
 
             <!-- Mode Selector -->
             <div id="auditorModeSelector">
@@ -2715,6 +2780,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         <!-- ID Verification Tab -->
         <div id="id-tab" class="tab-content">
+            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- This is a demonstration of on-device document processing. It is not a validated identity verification system and should not be used for actual identity verification, access control, or compliance decisions.</div>
             <div class="auditor-header">&#127380; ID VERIFICATION</div>
 
             <div class="camera-section">
@@ -3537,7 +3603,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                             } catch(e) {}
                                         });
                                         var rendered = mdToHtml(answer || 'No response.');
-                                        if (time) rendered += '<div class="tool-time" style="margin-top:8px;font-size:0.8em;opacity:0.5;">⏱ ' + time + 's</div>';
+                                        if (time) rendered += '<div class="tool-time" style="margin-top:8px;">⏱ ' + time + 's on NPU</div>';
                                         addMessage('assistant', rendered);
                                         btnEl.disabled = false;
                                         btnEl.style.opacity = '1';
@@ -3575,26 +3641,258 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 });
             }
 
-            // Suggestion chip handlers
-            document.querySelectorAll(".suggestion-chip[data-action]").forEach(function(chip) {
-                chip.addEventListener("click", function() {
-                    var action = this.getAttribute("data-action");
-                    if (action === "meeting-agenda") {
-                        runDemoEndpoint("/demo/meeting-agenda", "Generating meeting agenda...",
-                            "Create a board meeting agenda for tomorrow covering Q4 results, 2026 strategy, and executive compensation. Save it to the Demo folder.");
-                    } else if (action === "analyze-strategy") {
-                        runDemoEndpoint("/demo/analyze-strategy", "Analyzing strategy document...",
-                            "Read the strategy_2026.txt file and give me the three key takeaways.");
-                    } else if (action === "list-documents") {
-                        runDemoEndpoint("/demo/list-documents", "Listing documents...",
-                            "List the files in the Demo folder.");
-                    } else if (action === "summarize-doc") {
-                        document.getElementById("attachBtn").click();
-                    } else if (action === "device-health") {
-                        runDeviceHealth();
+            function runSecurityAudit() {
+                addMessage("user", "Run a security audit on this device");
+                var assistantDiv = addMessage("assistant", '<div class="health-checks-container" id="securityChecksLive"></div>');
+                var contentDiv = assistantDiv.querySelector(".content");
+                var checksDiv = document.getElementById("securityChecksLive");
+                checksDiv.innerHTML = '<div style="margin-bottom:8px;font-weight:600;">&#128272; Security Audit</div>';
+
+                fetch("/demo/security-audit", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ model: currentModel })
+                })
+                .then(function(r) { return r.body.getReader(); })
+                .then(function(reader) {
+                    var decoder = new TextDecoder();
+                    var buffer = "";
+
+                    function processLine(line) {
+                        line = line.trim();
+                        if (!line) return;
+                        try { var evt = JSON.parse(line); } catch(e) { return; }
+
+                        if (evt.type === "check-start") {
+                            var entry = document.createElement("div");
+                            entry.className = "health-check-entry";
+                            entry.id = "sc-" + evt.id;
+                            entry.innerHTML = '<div class="health-check-name">' + evt.icon + ' ' + evt.name +
+                                ' <span class="spinner" style="display:inline-block;width:12px;height:12px;"></span></div>' +
+                                '<div class="health-check-cmd">&gt; ' + evt.cmd + '</div>' +
+                                '<div class="health-check-output" id="sc-out-' + evt.id + '"></div>';
+                            checksDiv.appendChild(entry);
+                        } else if (evt.type === "check-done") {
+                            var el = document.getElementById("sc-" + evt.id);
+                            if (el) {
+                                el.className = "health-check-entry done";
+                                el.querySelector(".spinner").style.display = "none";
+                                var outEl = document.getElementById("sc-out-" + evt.id);
+                                if (outEl) outEl.textContent = evt.output;
+                            }
+                        } else if (evt.type === "check-error") {
+                            var el2 = document.getElementById("sc-" + evt.id);
+                            if (el2) {
+                                el2.className = "health-check-entry error";
+                                el2.querySelector(".spinner").style.display = "none";
+                                var outEl2 = document.getElementById("sc-out-" + evt.id);
+                                if (outEl2) { outEl2.textContent = evt.output; outEl2.style.color = "#FF4444"; }
+                            }
+                        } else if (evt.type === "status") {
+                            var statusDiv = document.createElement("div");
+                            statusDiv.style.cssText = "margin:8px 0;opacity:0.6;font-size:0.85em;";
+                            statusDiv.innerHTML = '<span class="spinner" style="display:inline-block;width:12px;height:12px;"></span> ' + evt.text;
+                            statusDiv.id = "securityAiStatus";
+                            checksDiv.appendChild(statusDiv);
+                        } else if (evt.type === "result") {
+                            var st = document.getElementById("securityAiStatus");
+                            if (st) st.remove();
+                            var summaryDiv = document.createElement("div");
+                            summaryDiv.className = "health-ai-summary";
+                            var html = '<div style="font-weight:600;margin-bottom:6px;">&#128272; Security Posture Assessment</div>' +
+                                mdToHtml(evt.text) +
+                                '<div class="tool-time" style="margin-top:6px;">&#9201; ' + evt.time + 's on NPU</div>';
+                            if (evt.findings && evt.findings.length > 0) {
+                                html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">' +
+                                    '<div style="font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;opacity:0.4;margin-bottom:6px;">Learn More</div>';
+                                evt.findings.forEach(function(f) {
+                                    html += '<button class="health-learn-btn" data-question="' +
+                                        f.q.replace(/"/g, '&quot;') + '"' +
+                                        ' style="display:inline-block;margin:3px 4px 3px 0;padding:4px 10px;font-size:0.78em;' +
+                                        'background:rgba(0,188,242,0.1);border:1px solid rgba(0,188,242,0.25);border-radius:12px;' +
+                                        'color:#00BCF2;cursor:pointer;">' + f.label + ' &rarr;</button>';
+                                });
+                                html += '</div>';
+                            }
+                            summaryDiv.innerHTML = html;
+                            checksDiv.appendChild(summaryDiv);
+                            summaryDiv.querySelectorAll(".health-learn-btn").forEach(function(btn) {
+                                btn.addEventListener("click", function() {
+                                    var q = this.getAttribute("data-question");
+                                    var btnEl = this;
+                                    btnEl.disabled = true;
+                                    btnEl.style.opacity = '0.5';
+                                    btnEl.textContent = 'Thinking...';
+                                    addMessage('user', q);
+                                    fetch('/knowledge', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({question: q})
+                                    }).then(function(resp) {
+                                        return resp.text();
+                                    }).then(function(body) {
+                                        var lines = body.trim().split('\n');
+                                        var answer = '';
+                                        var time = 0;
+                                        lines.forEach(function(line) {
+                                            try {
+                                                var evt2 = JSON.parse(line);
+                                                if (evt2.type === 'result') { answer = evt2.text; time = evt2.time; }
+                                                if (evt2.type === 'error') { answer = 'Error: ' + evt2.message; }
+                                            } catch(e) {}
+                                        });
+                                        var rendered = mdToHtml(answer || 'No response.');
+                                        if (time) rendered += '<div class="tool-time" style="margin-top:8px;">⏱ ' + time + 's on NPU</div>';
+                                        addMessage('assistant', rendered);
+                                        btnEl.disabled = false;
+                                        btnEl.style.opacity = '1';
+                                        btnEl.textContent = btnEl.getAttribute('data-question').split('.')[0].substring(0, 20) + '… ✓';
+                                    }).catch(function(err) {
+                                        addMessage('assistant', 'Error: ' + err.message);
+                                        btnEl.disabled = false;
+                                        btnEl.style.opacity = '1';
+                                    });
+                                });
+                            });
+                        } else if (evt.type === "error") {
+                            checksDiv.innerHTML += '<div style="color:#FF4444;margin-top:8px;">Error: ' + evt.message + '</div>';
+                        }
+                        document.getElementById("chatContainer").scrollTop = document.getElementById("chatContainer").scrollHeight;
                     }
+
+                    function read() {
+                        reader.read().then(function(chunk) {
+                            if (chunk.done) {
+                                if (buffer.trim()) processLine(buffer);
+                                return;
+                            }
+                            buffer += decoder.decode(chunk.value);
+                            var lines = buffer.split("\n");
+                            buffer = lines.pop();
+                            lines.forEach(processLine);
+                            read();
+                        });
+                    }
+                    read();
+                })
+                .catch(function(err) {
+                    checksDiv.innerHTML += '<div style="color:#FF4444;">Error: ' + err + '</div>';
                 });
-            });
+            }
+
+            function runDeviceSearch() {
+                addMessage("user", "Search for files on this device");
+                var assistantDiv = addMessage("assistant",
+                    '<div class="device-search-container" id="deviceSearchBox">' +
+                        '<div style="font-weight:600;margin-bottom:8px;">&#128269; Device Search</div>' +
+                        '<div style="font-size:0.85em;opacity:0.6;margin-bottom:8px;">Describe what you\'re looking for in plain English</div>' +
+                        '<div class="search-bar">' +
+                            '<input type="text" id="deviceSearchInput" placeholder="e.g. Excel files about Q4 budget from last month">' +
+                            '<button id="deviceSearchBtn">Search</button>' +
+                        '</div>' +
+                    '</div>');
+                var searchInput = document.getElementById("deviceSearchInput");
+                var searchBtn = document.getElementById("deviceSearchBtn");
+                searchInput.focus();
+
+                function executeSearch() {
+                    var query = searchInput.value.trim();
+                    if (!query) return;
+                    searchBtn.disabled = true;
+                    searchBtn.textContent = "Searching...";
+                    searchInput.disabled = true;
+
+                    var resultsDiv = document.createElement("div");
+                    resultsDiv.id = "deviceSearchResults";
+                    resultsDiv.innerHTML = '<div style="margin:8px 0;opacity:0.6;font-size:0.85em;"><span class="spinner" style="display:inline-block;width:12px;height:12px;"></span> Parsing query with AI...</div>';
+                    document.getElementById("deviceSearchBox").appendChild(resultsDiv);
+
+                    fetch("/demo/device-search", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({ query: query, model: currentModel })
+                    })
+                    .then(function(r) { return r.body.getReader(); })
+                    .then(function(reader) {
+                        var decoder = new TextDecoder();
+                        var buffer = "";
+
+                        function processLine(line) {
+                            line = line.trim();
+                            if (!line) return;
+                            try { var evt = JSON.parse(line); } catch(e) { return; }
+
+                            if (evt.type === "status") {
+                                resultsDiv.innerHTML = '<div style="margin:8px 0;opacity:0.6;font-size:0.85em;"><span class="spinner" style="display:inline-block;width:12px;height:12px;"></span> ' + evt.text + '</div>';
+                            } else if (evt.type === "search-results") {
+                                var html = '<div style="font-weight:600;margin:10px 0 6px;">Files Found (' + evt.count + ')</div>';
+                                if (evt.files && evt.files.length > 0) {
+                                    evt.files.forEach(function(f) {
+                                        html += '<div class="search-result-item">' +
+                                            '<div class="sr-name">' + f.name + '</div>' +
+                                            '<div class="sr-path">' + f.path + '</div>' +
+                                            '<div class="sr-meta">' + f.size + ' &middot; Modified: ' + f.modified + '</div>' +
+                                        '</div>';
+                                    });
+                                } else {
+                                    html += '<div style="opacity:0.5;font-size:0.85em;">No matching files found.</div>';
+                                }
+                                resultsDiv.innerHTML = html;
+                            } else if (evt.type === "result") {
+                                var summaryDiv = document.createElement("div");
+                                summaryDiv.className = "health-ai-summary";
+                                summaryDiv.innerHTML = '<div style="font-weight:600;margin-bottom:6px;">&#129302; AI Summary</div>' +
+                                    mdToHtml(evt.text) +
+                                    '<div class="tool-time" style="margin-top:6px;">&#9201; ' + evt.time + 's on NPU</div>';
+                                resultsDiv.appendChild(summaryDiv);
+                            } else if (evt.type === "error") {
+                                resultsDiv.innerHTML = '<div style="color:#FF4444;margin-top:8px;">Error: ' + evt.message + '</div>';
+                            }
+                            document.getElementById("chatContainer").scrollTop = document.getElementById("chatContainer").scrollHeight;
+                        }
+
+                        function read() {
+                            reader.read().then(function(chunk) {
+                                if (chunk.done) {
+                                    if (buffer.trim()) processLine(buffer);
+                                    return;
+                                }
+                                buffer += decoder.decode(chunk.value);
+                                var lines = buffer.split("\n");
+                                buffer = lines.pop();
+                                lines.forEach(processLine);
+                                read();
+                            });
+                        }
+                        read();
+                    })
+                    .catch(function(err) {
+                        resultsDiv.innerHTML = '<div style="color:#FF4444;">Error: ' + err + '</div>';
+                    });
+                }
+
+                searchBtn.addEventListener("click", executeSearch);
+                searchInput.addEventListener("keydown", function(e) {
+                    if (e.key === "Enter") executeSearch();
+                });
+            }
+
+            // Suggestion chip handlers
+            function bindChipHandlers() {
+                document.querySelectorAll(".suggestion-chip[data-action]").forEach(function(chip) {
+                    chip.addEventListener("click", function() {
+                        var action = this.getAttribute("data-action");
+                        if (action === "device-health") {
+                            runDeviceHealth();
+                        } else if (action === "security-audit") {
+                            runSecurityAudit();
+                        } else if (action === "device-search") {
+                            runDeviceSearch();
+                        }
+                    });
+                });
+            }
+            bindChipHandlers();
 
             // === File Picker for Review & Summarize ===
             var selectedReviewFiles = [];
@@ -3847,33 +4145,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     // Rebuild if removed from DOM
                     var chipsHtml = '<div class="chat-empty-state" id="chatEmptyState">' +
                         '<div class="suggestion-grid">' +
-                            '<button class="suggestion-chip" data-action="meeting-agenda"><span class="chip-icon">&#128203;</span><span>Meeting Agenda</span></button>' +
-                            '<button class="suggestion-chip" data-action="analyze-strategy"><span class="chip-icon">&#128196;</span><span>Analyze Strategy</span></button>' +
-                            '<button class="suggestion-chip" data-action="list-documents"><span class="chip-icon">&#128193;</span><span>List Documents</span></button>' +
-                            '<button class="suggestion-chip" data-action="summarize-doc"><span class="chip-icon">&#128221;</span><span>Summarize a Document</span></button>' +
                             '<button class="suggestion-chip" data-action="device-health"><span class="chip-icon">&#128737;</span><span>Device Health</span></button>' +
+                            '<button class="suggestion-chip" data-action="security-audit"><span class="chip-icon">&#128272;</span><span>Security Audit</span></button>' +
+                            '<button class="suggestion-chip" data-action="device-search"><span class="chip-icon">&#128269;</span><span>Device Search</span></button>' +
                         '</div></div>';
                     document.getElementById("chatContainer").insertAdjacentHTML("afterend", chipsHtml);
-                    // Re-bind chip handlers
-                    document.querySelectorAll(".suggestion-chip[data-action]").forEach(function(chip) {
-                        chip.addEventListener("click", function() {
-                            var action = this.getAttribute("data-action");
-                            if (action === "meeting-agenda") {
-                                runDemoEndpoint("/demo/meeting-agenda", "Generating meeting agenda...",
-                                    "Create a board meeting agenda for tomorrow covering Q4 results, 2026 strategy, and executive compensation. Save it to the Demo folder.");
-                            } else if (action === "analyze-strategy") {
-                                runDemoEndpoint("/demo/analyze-strategy", "Analyzing strategy document...",
-                                    "Read the strategy_2026.txt file and give me the three key takeaways.");
-                            } else if (action === "list-documents") {
-                                runDemoEndpoint("/demo/list-documents", "Listing documents...",
-                                    "List the files in the Demo folder.");
-                            } else if (action === "summarize-doc") {
-                                document.getElementById("attachBtn").click();
-                            } else if (action === "device-health") {
-                                runDeviceHealth();
-                            }
-                        });
-                    });
+                    bindChipHandlers();
                 }
                 document.getElementById("auditTrail").style.display = "none";
                 document.getElementById("auditEntries").innerHTML = "";
@@ -6761,163 +7038,8 @@ def save_summary():
         return jsonify({'success': False, 'error': str(e)})
 
 
-@app.route('/demo/meeting-agenda', methods=['POST'])
-def demo_meeting_agenda():
-    """Single-step meeting agenda creation — direct write, one model call."""
-    data = request.json
-    model = DEFAULT_MODEL
-    output_path = os.path.join(DEMO_DIR, "board_meeting_prep.txt")
-
-    def generate():
-        start = _time.time()
-        yield json.dumps({"type": "status", "text": "Generating meeting agenda..."}) + "\n"
-
-        try:
-            _call_start = _time.time()
-            response = foundry_chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful executive assistant. Be concise and professional."},
-                    {"role": "user", "content": "Create a board meeting agenda for tomorrow covering Q4 results, 2026 strategy, and executive compensation. Format it professionally with times and topics."},
-                ],
-                max_tokens=512,
-                temperature=0.3,
-            )
-            _track_model_call(response, _time.time() - _call_start)
-            agenda = (response.choices[0].message.content or "").strip()
-
-            # Write to file
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(agenda)
-
-            AGENT_AUDIT_LOG.append({
-                "timestamp": _time.strftime("%H:%M:%S"),
-                "tool": "write",
-                "arguments": {"path": output_path},
-                "success": True,
-                "time": round(_time.time() - start, 1),
-            })
-
-            total = round(_time.time() - start, 1)
-            yield json.dumps({
-                "type": "result",
-                "text": agenda,
-                "time": total,
-                "file": os.path.basename(output_path)
-            }) + "\n"
-        except Exception as e:
-            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
-
-    return Response(generate(), mimetype='text/plain')
 
 
-@app.route('/demo/analyze-strategy', methods=['POST'])
-def demo_analyze_strategy():
-    """Single-step strategy analysis — direct read, one model call."""
-    data = request.json
-    model = DEFAULT_MODEL
-    file_path = os.path.join(DEMO_DIR, "strategy_2026.txt")
-
-    def generate():
-        start = _time.time()
-        yield json.dumps({"type": "status", "text": "Reading strategy document..."}) + "\n"
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except Exception as e:
-            yield json.dumps({"type": "error", "message": f"Could not read file: {e}"}) + "\n"
-            return
-
-        AGENT_AUDIT_LOG.append({
-            "timestamp": _time.strftime("%H:%M:%S"),
-            "tool": "read",
-            "arguments": {"path": file_path},
-            "success": True,
-            "time": 0,
-        })
-
-        if len(content) > 2500:
-            content = content[:2500] + "\n...(truncated)"
-
-        yield json.dumps({"type": "status", "text": "Analyzing with AI..."}) + "\n"
-
-        try:
-            _call_start = _time.time()
-            response = foundry_chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful executive assistant. Be concise."},
-                    {"role": "user", "content": f"Here is a strategy document:\n\n{content}\n\nGive me the three key takeaways."},
-                ],
-                max_tokens=512,
-                temperature=0.3,
-            )
-            _track_model_call(response, _time.time() - _call_start)
-            analysis = (response.choices[0].message.content or "").strip()
-            total = round(_time.time() - start, 1)
-            yield json.dumps({"type": "result", "text": analysis, "time": total}) + "\n"
-        except Exception as e:
-            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
-
-    return Response(generate(), mimetype='text/plain')
-
-
-@app.route('/demo/list-documents', methods=['POST'])
-def demo_list_documents():
-    """Single-step directory listing — direct listing, one model call for summary."""
-    data = request.json
-    model = DEFAULT_MODEL
-
-    def generate():
-        start = _time.time()
-        yield json.dumps({"type": "status", "text": "Listing documents..."}) + "\n"
-
-        try:
-            files = os.listdir(DEMO_DIR)
-            file_list = []
-            for f in sorted(files):
-                full_path = os.path.join(DEMO_DIR, f)
-                if os.path.isfile(full_path):
-                    size = os.path.getsize(full_path)
-                    file_list.append(f"{f} ({size:,} bytes)")
-                else:
-                    file_list.append(f"{f}/ (folder)")
-
-            listing = "\n".join(file_list)
-
-            AGENT_AUDIT_LOG.append({
-                "timestamp": _time.strftime("%H:%M:%S"),
-                "tool": "exec",
-                "arguments": {"command": f"Get-ChildItem {DEMO_DIR}"},
-                "success": True,
-                "time": round(_time.time() - start, 1),
-            })
-
-            yield json.dumps({"type": "status", "text": "Summarizing..."}) + "\n"
-
-            _call_start = _time.time()
-            response = foundry_chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant. Be brief."},
-                    {"role": "user", "content": f"Here are the files in the Demo folder:\n\n{listing}\n\nBriefly describe what's in this folder (1-2 sentences)."},
-                ],
-                max_tokens=256,
-                temperature=0.3,
-            )
-            _track_model_call(response, _time.time() - _call_start)
-            summary = (response.choices[0].message.content or "").strip()
-            total = round(_time.time() - start, 1)
-            yield json.dumps({
-                "type": "result",
-                "text": f"**Documents in Demo folder:**\n\n{listing}\n\n{summary}",
-                "time": total
-            }) + "\n"
-        except Exception as e:
-            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
-
-    return Response(generate(), mimetype='text/plain')
 
 
 @app.route('/demo/device-health', methods=['POST'])
@@ -7138,6 +7260,472 @@ def demo_device_health():
             }) + "\n"
         except Exception as e:
             yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/demo/security-audit', methods=['POST'])
+def demo_security_audit():
+    """Chip-to-cloud security audit — 17 PowerShell checks + AI posture grade."""
+    model = DEFAULT_MODEL
+
+    SECURITY_CHECKS = [
+        {
+            "id": "tpm",
+            "name": "TPM Module",
+            "icon": "\U0001f510",
+            "cmd": 'Get-Tpm | Select-Object TpmPresent, TpmReady, ManufacturerVersion | Format-List',
+            "parse": lambda out: ("PASS", "TPM present and ready") if "True" in out and "TpmPresent" in out else ("FAIL", "TPM not detected"),
+        },
+        {
+            "id": "secureboot",
+            "name": "Secure Boot",
+            "icon": "\U0001f512",
+            "cmd": 'Confirm-SecureBootUEFI',
+            "parse": lambda out: ("PASS", "Secure Boot enabled") if "True" in out else ("FAIL", "Secure Boot disabled"),
+        },
+        {
+            "id": "bitlocker",
+            "name": "BitLocker Encryption",
+            "icon": "\U0001f4bf",
+            "cmd": 'Get-BitLockerVolume -MountPoint C: -ErrorAction SilentlyContinue | Select-Object MountPoint, VolumeStatus, ProtectionStatus, EncryptionPercentage | Format-List',
+            "parse": lambda out: ("PASS", "Drive encrypted") if "FullyEncrypted" in out or "EncryptionInProgress" in out else ("FAIL", "Drive not encrypted"),
+        },
+        {
+            "id": "vbs",
+            "name": "Virtualization-Based Security",
+            "icon": "\U0001f6e1\ufe0f",
+            "cmd": 'Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard -ErrorAction SilentlyContinue | Select-Object VirtualizationBasedSecurityStatus, SecurityServicesRunning | Format-List',
+            "parse": lambda out: ("PASS", "VBS running") if "VirtualizationBasedSecurityStatus" in out and "2" in out else ("WARN", "VBS not running"),
+        },
+        {
+            "id": "defender_av",
+            "name": "Defender Antivirus",
+            "icon": "\U0001f6e1\ufe0f",
+            "cmd": 'Get-MpComputerStatus | Select-Object AntivirusEnabled, RealTimeProtectionEnabled, IoavProtectionEnabled, AntispywareEnabled | Format-List',
+            "parse": lambda out: ("PASS", "All protections enabled") if out.count("True") >= 3 else ("FAIL", "Some protections disabled"),
+        },
+        {
+            "id": "defender_edr",
+            "name": "Defender for Endpoint (EDR)",
+            "icon": "\U0001f50d",
+            "cmd": 'Get-Service Sense -ErrorAction SilentlyContinue | Select-Object Status, DisplayName | Format-List',
+            "parse": lambda out: ("PASS", "EDR agent running") if "Running" in out else ("WARN", "EDR agent not detected"),
+        },
+        {
+            "id": "smartscreen",
+            "name": "SmartScreen",
+            "icon": "\U0001f6ab",
+            "cmd": 'Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer" -Name SmartScreenEnabled -ErrorAction SilentlyContinue | Select-Object SmartScreenEnabled | Format-List',
+            "parse": lambda out: ("PASS", "SmartScreen enabled") if out.strip() and "Off" not in out else ("WARN", "SmartScreen may be disabled"),
+        },
+        {
+            "id": "firewall",
+            "name": "Windows Firewall",
+            "icon": "\U0001f9f1",
+            "cmd": 'Get-NetFirewallProfile | Select-Object Name, Enabled | Format-List',
+            "parse": lambda out: ("PASS", "All profiles enabled") if out.count("True") >= 3 else ("FAIL", "Some firewall profiles disabled"),
+        },
+        {
+            "id": "smbv1",
+            "name": "SMB v1 Protocol",
+            "icon": "\u26a0\ufe0f",
+            "cmd": 'Get-SmbServerConfiguration | Select-Object EnableSMB1Protocol | Format-List',
+            "parse": lambda out: ("PASS", "SMBv1 disabled") if "False" in out else ("FAIL", "SMBv1 enabled — known attack vector"),
+        },
+        {
+            "id": "execpolicy",
+            "name": "PowerShell Execution Policy",
+            "icon": "\u2699\ufe0f",
+            "cmd": 'Get-ExecutionPolicy -List | Format-List',
+            "parse": lambda out: ("WARN", "Unrestricted execution policy") if "Unrestricted" in out else ("PASS", "Execution policy configured"),
+        },
+        {
+            "id": "localadmins",
+            "name": "Local Administrators",
+            "icon": "\U0001f465",
+            "cmd": 'net localgroup administrators',
+            "parse": lambda out: ("WARN", "More than 2 admin accounts") if len([l for l in out.split('\n') if l.strip() and not l.startswith('-') and 'command' not in l.lower() and 'alias' not in l.lower() and 'comment' not in l.lower() and 'members' not in l.lower() and 'successfully' not in l.lower()]) > 2 else ("PASS", "Admin accounts within policy"),
+        },
+        {
+            "id": "applocker",
+            "name": "WDAC / AppLocker",
+            "icon": "\U0001f6e1\ufe0f",
+            "cmd": 'Get-AppLockerPolicy -Effective -ErrorAction SilentlyContinue | Select-Object -ExpandProperty RuleCollections | Measure-Object | Select-Object Count | Format-List',
+            "parse": lambda out: ("PASS", "Application control configured") if "Count" in out and not any(x in out for x in ["Count : 0", "Count: 0"]) else ("WARN", "No application control policies"),
+        },
+        {
+            "id": "certs",
+            "name": "Certificate Health",
+            "icon": "\U0001f4dc",
+            "cmd": 'Get-ChildItem Cert:\\LocalMachine\\My -ErrorAction SilentlyContinue | Where-Object {$_.NotAfter -lt (Get-Date)} | Select-Object Subject, NotAfter | Format-List',
+            "parse": lambda out: ("WARN", "Expired certificates found") if "Subject" in out else ("PASS", "No expired certificates"),
+        },
+        {
+            "id": "netprofile",
+            "name": "Network Profile",
+            "icon": "\U0001f310",
+            "cmd": 'Get-NetConnectionProfile | Select-Object Name, NetworkCategory | Format-List',
+            "parse": lambda out: ("WARN", "Connected to Public network") if "Public" in out else ("PASS", "Network profile is Domain/Private"),
+        },
+        {
+            "id": "autoplay",
+            "name": "AutoPlay / AutoRun",
+            "icon": "\U0001f4c0",
+            "cmd": 'Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name NoDriveTypeAutoRun -ErrorAction SilentlyContinue | Select-Object NoDriveTypeAutoRun | Format-List',
+            "parse": lambda out: ("PASS", "AutoRun disabled") if "NoDriveTypeAutoRun" in out and out.strip() else ("WARN", "AutoRun policy not set"),
+        },
+        {
+            "id": "rdp",
+            "name": "Remote Desktop",
+            "icon": "\U0001f5a5\ufe0f",
+            "cmd": 'Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server" -Name fDenyTSConnections -ErrorAction SilentlyContinue | Select-Object fDenyTSConnections | Format-List',
+            "parse": lambda out: ("PASS", "Remote Desktop disabled") if "1" in out else ("WARN", "Remote Desktop enabled"),
+        },
+        {
+            "id": "hello",
+            "name": "Windows Hello",
+            "icon": "\U0001f44b",
+            "cmd": 'dsregcmd /status | Select-String -Pattern "NgcSet|DeviceId|AzureAdJoined"',
+            "parse": lambda out: ("PASS", "Windows Hello configured") if "YES" in out.upper() and "NgcSet" in out else ("WARN", "Windows Hello not configured"),
+        },
+    ]
+
+    def generate():
+        start = _time.time()
+        results = []
+        ratings = []
+
+        for check in SECURITY_CHECKS:
+            yield json.dumps({
+                "type": "check-start",
+                "id": check["id"],
+                "name": check["name"],
+                "icon": check["icon"],
+                "cmd": check["cmd"],
+            }) + "\n"
+
+            try:
+                proc = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-Command", check["cmd"]],
+                    capture_output=True, text=True, timeout=10
+                )
+                output = (proc.stdout or "").strip()
+                if proc.returncode != 0 and proc.stderr:
+                    output = output or proc.stderr.strip()
+                if not output:
+                    output = "(no data available)"
+                if len(output) > 350:
+                    output = output[:350] + "..."
+
+                # Pre-compute rating
+                rating, reason = check["parse"](output)
+                ratings.append({"id": check["id"], "name": check["name"], "rating": rating, "reason": reason})
+                results.append(f"{check['name']}: {rating} — {reason}\n{output}")
+
+                yield json.dumps({
+                    "type": "check-done",
+                    "id": check["id"],
+                    "output": f"[{rating}] {reason}\n{output}",
+                }) + "\n"
+
+            except subprocess.TimeoutExpired:
+                ratings.append({"id": check["id"], "name": check["name"], "rating": "WARN", "reason": "Command timed out"})
+                results.append(f"{check['name']}: TIMEOUT")
+                yield json.dumps({
+                    "type": "check-error",
+                    "id": check["id"],
+                    "output": "Command timed out (10s)",
+                }) + "\n"
+            except Exception as e:
+                ratings.append({"id": check["id"], "name": check["name"], "rating": "WARN", "reason": str(e)})
+                results.append(f"{check['name']}: ERROR - {str(e)}")
+                yield json.dumps({
+                    "type": "check-error",
+                    "id": check["id"],
+                    "output": str(e),
+                }) + "\n"
+
+        yield json.dumps({"type": "status", "text": "AI analyzing security posture..."}) + "\n"
+
+        # Build pre-computed ratings text
+        pass_count = sum(1 for r in ratings if r["rating"] == "PASS")
+        warn_count = sum(1 for r in ratings if r["rating"] == "WARN")
+        fail_count = sum(1 for r in ratings if r["rating"] == "FAIL")
+        total_checks = len(ratings)
+
+        # Grade calculation
+        if fail_count == 0 and warn_count <= 2:
+            grade = "A"
+        elif fail_count == 0 and warn_count <= 4:
+            grade = "B"
+        elif fail_count <= 1 and warn_count <= 5:
+            grade = "C"
+        elif fail_count <= 3:
+            grade = "D"
+        else:
+            grade = "F"
+
+        pre_text = f"Overall Grade: {grade} ({pass_count} PASS, {warn_count} WARN, {fail_count} FAIL out of {total_checks} checks)\n\n"
+        for r in ratings:
+            pre_text += f"- {r['name']}: {r['rating']} — {r['reason']}\n"
+
+        # Build findings for Learn More buttons
+        findings = []
+        for r in ratings:
+            if r["rating"] in ("WARN", "FAIL"):
+                q_map = {
+                    "tpm": ("TPM", "What is TPM 2.0, why is it required for Windows 11 security, and what are the risks of not having it?"),
+                    "secureboot": ("Secure Boot", "What is UEFI Secure Boot, how does it protect against rootkits, and how do I enable it?"),
+                    "bitlocker": ("BitLocker", "What is BitLocker drive encryption, why is it critical for enterprise devices, and how do I enable it?"),
+                    "vbs": ("VBS", "What is Virtualization-Based Security (VBS), how does it protect credentials with Credential Guard, and what's the performance impact?"),
+                    "defender_av": ("Defender AV", "Why are all four Defender protection layers important (antivirus, real-time, IOAV, antispyware) and what should I do if any are disabled?"),
+                    "defender_edr": ("EDR", "What is Defender for Endpoint (EDR/Sense service), how does it differ from Defender Antivirus, and why is it important for enterprise threat detection?"),
+                    "smartscreen": ("SmartScreen", "What is Windows SmartScreen, how does it protect against phishing and malicious downloads, and should it be enabled?"),
+                    "firewall": ("Firewall", "Why should all Windows Firewall profiles (Domain, Private, Public) be enabled and what are the risks of disabling any?"),
+                    "smbv1": ("SMBv1", "Why is SMB v1 a critical security risk (WannaCry, EternalBlue) and how do I permanently disable it?"),
+                    "execpolicy": ("Execution Policy", "What are PowerShell execution policies, how does Unrestricted differ from RemoteSigned, and what's the enterprise recommendation?"),
+                    "localadmins": ("Local Admins", "Why should local administrator accounts be minimized and what's the principle of least privilege for enterprise endpoints?"),
+                    "applocker": ("AppLocker/WDAC", "What are AppLocker and Windows Defender Application Control (WDAC), how do they prevent unauthorized software, and which should I use?"),
+                    "certs": ("Expired Certs", "What are the security risks of expired certificates on a device and how do I clean them up?"),
+                    "netprofile": ("Network Profile", "What's the difference between Domain, Private, and Public network profiles in Windows and why does Public weaken security?"),
+                    "autoplay": ("AutoPlay", "Why should AutoPlay/AutoRun be disabled on enterprise devices and how is it exploited by malware via USB drives?"),
+                    "rdp": ("Remote Desktop", "What are the security risks of having Remote Desktop enabled, and how is it commonly exploited (BlueKeep, brute force)?"),
+                    "hello": ("Windows Hello", "What is Windows Hello for Business, how does passwordless authentication improve security, and how do I set it up?"),
+                }
+                if r["id"] in q_map:
+                    label, question = q_map[r["id"]]
+                    findings.append({"label": f"{label} ({r['rating']})", "q": question})
+
+        try:
+            _call_start = _time.time()
+            response = foundry_chat(
+                model=model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are a senior enterprise security analyst. Be concise. "
+                        "Write a 2-3 sentence executive summary. "
+                        "State the security grade. "
+                        "Then list ONLY the WARN and FAIL items as bullet points. "
+                        "End with TOP 3 PRIORITY ACTIONS numbered 1-3."
+                    )},
+                    {"role": "user", "content": (
+                        f"Security audit results:\n{pre_text}\n\nAssessment:"
+                    )},
+                ],
+                max_tokens=512,
+                temperature=0.3,
+            )
+            _track_model_call(response, _time.time() - _call_start)
+            summary = (response.choices[0].message.content or "").strip()
+            total = round(_time.time() - start, 1)
+
+            AGENT_AUDIT_LOG.append({
+                "timestamp": _time.strftime("%H:%M:%S"),
+                "tool": "exec",
+                "arguments": {"command": "Security Audit (17 checks)"},
+                "success": True,
+                "time": total,
+            })
+
+            yield json.dumps({
+                "type": "result",
+                "text": summary,
+                "time": total,
+                "findings": findings,
+            }) + "\n"
+        except Exception as e:
+            yield json.dumps({"type": "error", "message": str(e)}) + "\n"
+
+    return Response(generate(), mimetype='text/plain')
+
+
+@app.route('/demo/device-search', methods=['POST'])
+def demo_device_search():
+    """Natural language file search — AI parses query, PowerShell searches, AI summarizes."""
+    model = DEFAULT_MODEL
+    data = request.json or {}
+    query = (data.get('query') or '').strip()
+    if not query:
+        return jsonify({"error": "No search query provided"}), 400
+
+    def generate():
+        start = _time.time()
+        yield json.dumps({"type": "status", "text": "Parsing your query with AI..."}) + "\n"
+
+        # Step 1: AI parses natural language query into search parameters
+        try:
+            _call_start = _time.time()
+            parse_response = foundry_chat(
+                model=model,
+                messages=[
+                    {"role": "system", "content": (
+                        "You are a file search assistant. Parse the user's natural language query into JSON search parameters. "
+                        "Return ONLY valid JSON with these fields:\n"
+                        '{"keywords": ["word1", "word2"], "extensions": [".xlsx", ".docx"], "recency": "any"}\n'
+                        "For extensions, infer from context: 'Excel' → '.xlsx,.xls', 'Word' → '.docx,.doc', "
+                        "'PDF' → '.pdf', 'PowerPoint' → '.pptx,.ppt', 'photos' → '.jpg,.png,.heic'. "
+                        "For recency: 'last week' → '7', 'last month' → '30', 'recent' → '14', otherwise 'any'. "
+                        "Return ONLY JSON, no explanation."
+                    )},
+                    {"role": "user", "content": query},
+                ],
+                max_tokens=150,
+                temperature=0.1,
+            )
+            _track_model_call(response=parse_response, elapsed=_time.time() - _call_start)
+            parse_text = (parse_response.choices[0].message.content or "").strip()
+
+            # Extract JSON from response
+            search_params = None
+            try:
+                # Try direct JSON parse
+                search_params = json.loads(parse_text)
+            except json.JSONDecodeError:
+                # Try to find JSON block in response
+                m = re.search(r'\{[^}]+\}', parse_text, re.DOTALL)
+                if m:
+                    try:
+                        search_params = json.loads(m.group())
+                    except json.JSONDecodeError:
+                        pass
+
+            # Fallback: split query into keywords
+            if not search_params:
+                search_params = {
+                    "keywords": [w for w in query.lower().split() if len(w) > 2],
+                    "extensions": [".docx", ".xlsx", ".pdf", ".pptx", ".txt"],
+                    "recency": "any",
+                }
+
+        except Exception as e:
+            # Fallback on AI failure
+            search_params = {
+                "keywords": [w for w in query.lower().split() if len(w) > 2],
+                "extensions": [".docx", ".xlsx", ".pdf", ".pptx", ".txt"],
+                "recency": "any",
+            }
+
+        keywords = search_params.get("keywords", [])
+        extensions = search_params.get("extensions", [".docx", ".xlsx", ".pdf", ".pptx", ".txt"])
+        recency = search_params.get("recency", "any")
+
+        yield json.dumps({"type": "status", "text": "Searching files..."}) + "\n"
+
+        # Step 2: PowerShell search scoped to user profile dirs
+        search_dirs = ["Documents", "Desktop", "Downloads"]
+        user_profile = os.environ.get("USERPROFILE", "C:\\Users\\Default")
+
+        # Build extension filter
+        ext_filter = " -or ".join([f'$_.Extension -eq "{ext}"' for ext in extensions])
+        if not ext_filter:
+            ext_filter = '$true'
+
+        # Build recency filter
+        recency_filter = ""
+        if recency != "any":
+            try:
+                days = int(recency)
+                recency_filter = f' | Where-Object {{ $_.LastWriteTime -gt (Get-Date).AddDays(-{days}) }}'
+            except (ValueError, TypeError):
+                recency_filter = ""
+
+        all_results = []
+        for search_dir in search_dirs:
+            full_path = os.path.join(user_profile, search_dir)
+            if not os.path.exists(full_path):
+                continue
+
+            ps_cmd = (
+                f'Get-ChildItem -Path "{full_path}" -Recurse -File -ErrorAction SilentlyContinue '
+                f'| Where-Object {{ {ext_filter} }}'
+                f'{recency_filter}'
+                f' | Select-Object Name, FullName, @{{N="SizeKB";E={{[math]::Round($_.Length/1KB,1)}}}}, '
+                f'@{{N="Modified";E={{$_.LastWriteTime.ToString("yyyy-MM-dd HH:mm")}}}} '
+                f'| ConvertTo-Json -Depth 2'
+            )
+
+            try:
+                proc = subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-Command", ps_cmd],
+                    capture_output=True, text=True, timeout=15
+                )
+                if proc.stdout and proc.stdout.strip():
+                    try:
+                        parsed = json.loads(proc.stdout)
+                        if isinstance(parsed, dict):
+                            parsed = [parsed]
+                        all_results.extend(parsed)
+                    except json.JSONDecodeError:
+                        pass
+            except (subprocess.TimeoutExpired, Exception):
+                pass
+
+        # Filter by keywords (case-insensitive name match)
+        if keywords:
+            filtered = []
+            for item in all_results:
+                name_lower = (item.get("Name") or "").lower()
+                if any(kw.lower() in name_lower for kw in keywords):
+                    filtered.append(item)
+            all_results = filtered if filtered else all_results
+
+        # Cap at 20 results, sort by modified date
+        all_results = sorted(all_results, key=lambda x: x.get("Modified", ""), reverse=True)[:20]
+
+        # Format for frontend
+        file_cards = []
+        for item in all_results:
+            size_kb = item.get("SizeKB", 0)
+            size_str = f"{size_kb} KB" if size_kb < 1024 else f"{round(size_kb/1024, 1)} MB"
+            file_cards.append({
+                "name": item.get("Name", "Unknown"),
+                "path": item.get("FullName", ""),
+                "size": size_str,
+                "modified": item.get("Modified", "Unknown"),
+            })
+
+        yield json.dumps({
+            "type": "search-results",
+            "count": len(file_cards),
+            "files": file_cards,
+        }) + "\n"
+
+        AGENT_AUDIT_LOG.append({
+            "timestamp": _time.strftime("%H:%M:%S"),
+            "tool": "exec",
+            "arguments": {"command": f"Device Search: {query}"},
+            "success": True,
+            "time": round(_time.time() - start, 1),
+        })
+
+        # Step 3: AI summarizes results
+        if file_cards:
+            yield json.dumps({"type": "status", "text": "AI summarizing results..."}) + "\n"
+
+            file_summary = "\n".join([f"- {f['name']} ({f['size']}, modified {f['modified']})" for f in file_cards[:15]])
+
+            try:
+                _call_start = _time.time()
+                summary_response = foundry_chat(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful file search assistant. Briefly summarize the search results in 1-2 sentences. Mention the count, types, and any patterns you see."},
+                        {"role": "user", "content": f"User searched for: \"{query}\"\n\nFound {len(file_cards)} files:\n{file_summary}\n\nBrief summary:"},
+                    ],
+                    max_tokens=150,
+                    temperature=0.3,
+                )
+                _track_model_call(response=summary_response, elapsed=_time.time() - _call_start)
+                summary = (summary_response.choices[0].message.content or "").strip()
+                total = round(_time.time() - start, 1)
+                yield json.dumps({"type": "result", "text": summary, "time": total}) + "\n"
+            except Exception as e:
+                total = round(_time.time() - start, 1)
+                yield json.dumps({"type": "result", "text": f"Found {len(file_cards)} matching files.", "time": total}) + "\n"
+        else:
+            total = round(_time.time() - start, 1)
+            yield json.dumps({"type": "result", "text": "No files matched your search criteria. Try broadening your search with different keywords or file types.", "time": total}) + "\n"
 
     return Response(generate(), mimetype='text/plain')
 

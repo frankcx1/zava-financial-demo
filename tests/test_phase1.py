@@ -513,13 +513,30 @@ class TestHTMLTemplate(unittest.TestCase):
         self.assertIn('id="auditor-tab"', self.html)
         self.assertIn('id="id-tab"', self.html)
 
-    def test_existing_chips_preserved(self):
-        """Verify no existing suggestion chips were removed."""
-        self.assertIn('data-action="meeting-agenda"', self.html)
-        self.assertIn('data-action="analyze-strategy"', self.html)
-        self.assertIn('data-action="list-documents"', self.html)
-        self.assertIn('data-action="summarize-doc"', self.html)
+    def test_device_intelligence_chips(self):
+        """Verify Device Intelligence chips: Device Health, Security Audit, Device Search."""
         self.assertIn('data-action="device-health"', self.html)
+        self.assertIn('data-action="security-audit"', self.html)
+        self.assertIn('data-action="device-search"', self.html)
+        # Old chips should be gone
+        self.assertNotIn('data-action="meeting-agenda"', self.html)
+        self.assertNotIn('data-action="analyze-strategy"', self.html)
+        self.assertNotIn('data-action="list-documents"', self.html)
+        self.assertNotIn('data-action="summarize-doc"', self.html)
+
+    def test_security_audit_endpoint_exists(self):
+        """Verify /demo/security-audit route is registered."""
+        self.assertIn("security-audit", self.html)
+        self.assertIn("runSecurityAudit", self.html)
+
+    def test_device_search_endpoint_exists(self):
+        """Verify /demo/device-search route is registered."""
+        self.assertIn("device-search", self.html)
+        self.assertIn("runDeviceSearch", self.html)
+
+    def test_grid_is_3_columns(self):
+        """Verify suggestion grid is 3 columns for Device Intelligence chips."""
+        self.assertIn("repeat(3, 1fr)", self.html)
 
     def test_js_references_correct_savings_function(self):
         """Verify we use updateSavingsWidget (not refreshSavingsWidget)."""
