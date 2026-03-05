@@ -7293,10 +7293,17 @@ def demo_security_audit():
         },
         {
             "id": "vbs",
-            "name": "Virtualization-Based Security",
+            "name": "VBS / Credential Guard / HVCI",
             "icon": "\U0001f6e1\ufe0f",
             "cmd": 'Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\\Microsoft\\Windows\\DeviceGuard -ErrorAction SilentlyContinue | Select-Object VirtualizationBasedSecurityStatus, SecurityServicesRunning | Format-List',
-            "parse": lambda out: ("PASS", "VBS running") if "VirtualizationBasedSecurityStatus" in out and "2" in out else ("WARN", "VBS not running"),
+            "parse": lambda out: (
+                ("PASS", "VBS running" +
+                    (", Credential Guard active" if "1" in re.findall(r'SecurityServicesRunning\s*:\s*\{([^}]+)\}', out)[0].split(',') else "") +
+                    (", HVCI active" if "2" in [x.strip() for x in re.findall(r'SecurityServicesRunning\s*:\s*\{([^}]+)\}', out)[0].split(',')] else "")
+                ) if "VirtualizationBasedSecurityStatus" in out and "2" in out and re.findall(r'SecurityServicesRunning\s*:\s*\{([^}]+)\}', out)
+                else ("PASS", "VBS running") if "VirtualizationBasedSecurityStatus" in out and "2" in out
+                else ("WARN", "VBS not running")
+            ),
         },
         {
             "id": "defender_av",
@@ -7314,10 +7321,10 @@ def demo_security_audit():
         },
         {
             "id": "smartscreen",
-            "name": "SmartScreen",
+            "name": "SmartScreen / Network Protection",
             "icon": "\U0001f6ab",
-            "cmd": 'Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer" -Name SmartScreenEnabled -ErrorAction SilentlyContinue | Select-Object SmartScreenEnabled | Format-List',
-            "parse": lambda out: ("PASS", "SmartScreen enabled") if out.strip() and "Off" not in out else ("WARN", "SmartScreen may be disabled"),
+            "cmd": 'Get-MpPreference | Select-Object EnableNetworkProtection | Format-List',
+            "parse": lambda out: ("PASS", "Network protection enabled") if "1" in out or "2" in out else ("WARN", "Network protection not enabled"),
         },
         {
             "id": "firewall",
@@ -7372,8 +7379,8 @@ def demo_security_audit():
             "id": "autoplay",
             "name": "AutoPlay / AutoRun",
             "icon": "\U0001f4c0",
-            "cmd": 'Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name NoDriveTypeAutoRun -ErrorAction SilentlyContinue | Select-Object NoDriveTypeAutoRun | Format-List',
-            "parse": lambda out: ("PASS", "AutoRun disabled") if "NoDriveTypeAutoRun" in out and out.strip() else ("WARN", "AutoRun policy not set"),
+            "cmd": '$lm = Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name NoDriveTypeAutoRun -ErrorAction SilentlyContinue; $cu = Get-ItemProperty "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer" -Name NoDriveTypeAutoRun -ErrorAction SilentlyContinue; if ($lm -or $cu) { "NoDriveTypeAutoRun: Set (HKLM=$($lm.NoDriveTypeAutoRun) HKCU=$($cu.NoDriveTypeAutoRun))" } else { "NoDriveTypeAutoRun: Not configured" }',
+            "parse": lambda out: ("PASS", "AutoRun disabled via policy") if "Set" in out else ("WARN", "AutoRun policy not configured"),
         },
         {
             "id": "rdp",
@@ -7388,6 +7395,55 @@ def demo_security_audit():
             "icon": "\U0001f44b",
             "cmd": 'dsregcmd /status | Select-String -Pattern "NgcSet|DeviceId|AzureAdJoined"',
             "parse": lambda out: ("PASS", "Windows Hello configured") if "YES" in out.upper() and "NgcSet" in out else ("WARN", "Windows Hello not configured"),
+        },
+        {
+            "id": "winrm",
+            "name": "WinRM Remote Management",
+            "icon": "\U0001f4e1",
+            "cmd": 'Get-Service WinRM -ErrorAction SilentlyContinue | Select-Object Status, StartType | Format-List',
+            "parse": lambda out: ("WARN", "WinRM is running") if "Running" in out else ("PASS", "WinRM not running"),
+        },
+        {
+            "id": "patchhealth",
+            "name": "Patch Health",
+            "icon": "\U0001f4e6",
+            "cmd": 'Get-HotFix | Sort-Object InstalledOn -Descending -ErrorAction SilentlyContinue | Select-Object -First 3 HotFixID, InstalledOn, Description | Format-List',
+            "parse": lambda out: ("PASS", "Recent patches installed") if "InstalledOn" in out and any(str(y) in out for y in [_time.strftime("%m/%d/%Y")[:3], _time.strftime("%Y")]) else ("WARN", "Patch recency unclear or outdated"),
+        },
+        {
+            "id": "uac",
+            "name": "UAC Configuration",
+            "icon": "\U0001f6a7",
+            "cmd": 'Get-ItemProperty "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -ErrorAction SilentlyContinue | Select-Object EnableLUA, ConsentPromptBehaviorAdmin, PromptOnSecureDesktop | Format-List',
+            "parse": lambda out: ("PASS", "UAC enabled with secure desktop") if re.search(r'EnableLUA\s*:\s*1', out) else ("FAIL", "UAC disabled"),
+        },
+        {
+            "id": "lsass",
+            "name": "LSASS / Credential Protection",
+            "icon": "\U0001f510",
+            "cmd": '$ppl = Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa" -ErrorAction SilentlyContinue | Select-Object RunAsPPL, LsaCfgFlags; $wd = Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest" -ErrorAction SilentlyContinue | Select-Object UseLogonCredential; "RunAsPPL: $($ppl.RunAsPPL)"; "LsaCfgFlags: $($ppl.LsaCfgFlags)"; "WDigest UseLogonCredential: $($wd.UseLogonCredential)"',
+            "parse": lambda out: ("FAIL", "WDigest plaintext creds enabled") if "UseLogonCredential: 1" in out else ("PASS", "WDigest disabled, LSASS protection present") if "RunAsPPL: 1" in out or "RunAsPPL: 2" in out else ("WARN", "LSASS PPL not confirmed"),
+        },
+        {
+            "id": "asr",
+            "name": "ASR Rules / Controlled Folders",
+            "icon": "\U0001f6e1\ufe0f",
+            "cmd": '$cfa = (Get-MpPreference).EnableControlledFolderAccess; $asr = (Get-MpPreference).AttackSurfaceReductionRules_Actions; $count = if ($asr) { ($asr | Where-Object {$_ -ne 0}).Count } else { 0 }; "ControlledFolderAccess: $cfa"; "ASR rules enabled: $count"',
+            "parse": lambda out: ("PASS", "Controlled folders + ASR rules active") if "ControlledFolderAccess: 1" in out or "ControlledFolderAccess: 2" in out else ("WARN", "Controlled Folder Access off") if "ASR rules enabled: 0" in out or "ASR rules enabled:" not in out else ("PASS", "ASR rules active"),
+        },
+        {
+            "id": "localusers",
+            "name": "Local User Accounts",
+            "icon": "\U0001f464",
+            "cmd": 'Get-LocalUser | Select-Object Name, Enabled, LastLogon | Format-List',
+            "parse": lambda out: ("WARN", "Stale or excessive local accounts") if out.lower().count("enabled : true") > 3 else ("PASS", "Local accounts within policy"),
+        },
+        {
+            "id": "pwpolicy",
+            "name": "Password Policy",
+            "icon": "\U0001f511",
+            "cmd": 'net accounts',
+            "parse": lambda out: ("WARN", "Weak password policy (min length too short)") if re.search(r'Minimum password length\s*:\s*[0-3]\b', out) else ("PASS", "Password policy configured"),
         },
     ]
 
@@ -7454,17 +7510,21 @@ def demo_security_audit():
         fail_count = sum(1 for r in ratings if r["rating"] == "FAIL")
         total_checks = len(ratings)
 
-        # Grade calculation
-        if fail_count == 0 and warn_count <= 2:
-            grade = "A"
-        elif fail_count == 0 and warn_count <= 4:
-            grade = "B"
-        elif fail_count <= 1 and warn_count <= 5:
-            grade = "C"
-        elif fail_count <= 3:
-            grade = "D"
-        else:
+        # Weighted grade: critical failures count more
+        _CRITICAL_IDS = {"secureboot", "bitlocker", "defender_av", "firewall", "tpm", "uac", "lsass"}
+        critical_fails = sum(1 for r in ratings if r["rating"] == "FAIL" and r["id"] in _CRITICAL_IDS)
+        if critical_fails >= 2:
             grade = "F"
+        elif critical_fails == 1 or fail_count >= 3:
+            grade = "D"
+        elif fail_count == 0 and warn_count <= 3:
+            grade = "A"
+        elif fail_count == 0 and warn_count <= 6:
+            grade = "B"
+        elif fail_count <= 1 and warn_count <= 8:
+            grade = "C"
+        else:
+            grade = "D"
 
         pre_text = f"Overall Grade: {grade} ({pass_count} PASS, {warn_count} WARN, {fail_count} FAIL out of {total_checks} checks)\n\n"
         for r in ratings:
@@ -7492,6 +7552,13 @@ def demo_security_audit():
                     "autoplay": ("AutoPlay", "Why should AutoPlay/AutoRun be disabled on enterprise devices and how is it exploited by malware via USB drives?"),
                     "rdp": ("Remote Desktop", "What are the security risks of having Remote Desktop enabled, and how is it commonly exploited (BlueKeep, brute force)?"),
                     "hello": ("Windows Hello", "What is Windows Hello for Business, how does passwordless authentication improve security, and how do I set it up?"),
+                    "winrm": ("WinRM", "What is WinRM (Windows Remote Management), what are the security risks of having it enabled, and when should it be disabled on enterprise endpoints?"),
+                    "patchhealth": ("Patch Health", "Why is patch recency critical for security, what are the risks of delayed Windows updates, and how do I check update compliance?"),
+                    "uac": ("UAC", "What is User Account Control (UAC), why is it important, and what do the different prompt levels mean for security?"),
+                    "lsass": ("LSASS/WDigest", "What is LSASS protection (PPL), why is WDigest dangerous when enabled, and how do credential theft tools like Mimikatz exploit these settings?"),
+                    "asr": ("ASR Rules", "What are Attack Surface Reduction rules in Defender, how does Controlled Folder Access protect against ransomware, and which ASR rules should be enabled?"),
+                    "localusers": ("Local Users", "Why should local user accounts be audited, what risks do stale enabled accounts pose, and how should enterprises manage local accounts?"),
+                    "pwpolicy": ("Password Policy", "What is a strong local password policy, why does minimum length matter, and what are the NIST and Microsoft recommendations?"),
                 }
                 if r["id"] in q_map:
                     label, question = q_map[r["id"]]
@@ -7523,7 +7590,7 @@ def demo_security_audit():
             AGENT_AUDIT_LOG.append({
                 "timestamp": _time.strftime("%H:%M:%S"),
                 "tool": "exec",
-                "arguments": {"command": "Security Audit (17 checks)"},
+                "arguments": {"command": "Security Audit (24 checks)"},
                 "success": True,
                 "time": total,
             })
