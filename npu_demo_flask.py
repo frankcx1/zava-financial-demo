@@ -15,6 +15,44 @@ from flask import Flask, render_template_string, request, Response, jsonify
 from openai import OpenAI
 from werkzeug.utils import secure_filename
 
+# --- Demo Configuration Layer ---
+# Override these values to re-skin for any customer or industry.
+# Tab names, subtitles, colors, persona names, and POC text are all driven from here.
+# The default config matches the generic Surface NPU demo.
+DEMO_CONFIG = {
+    "app_title": "Local NPU AI Assistant",
+    "app_subtitle": "Powered by Surface + Local AI",
+
+    # Brand colors (CSS values)
+    "brand_primary": "#0d1117",       # sidebar background start
+    "brand_primary_end": "#111827",   # sidebar background end
+    "brand_accent": "#00BCF2",        # active states, links, highlights
+    "brand_accent_rgb": "0,188,242",  # RGB for rgba() usage
+    "brand_hover": "#00BCF2",         # hover accent (can differ from accent)
+
+    # Tab names and subtitles (sidebar navigation)
+    "tabs": {
+        "chat":    {"name": "AI Agent",          "sub": "Chat & Tooling",       "icon": "&#129302;"},
+        "day":     {"name": "My Day",            "sub": "AI Chief of Staff",    "icon": "&#9728;&#65039;"},
+        "auditor": {"name": "Auditor",           "sub": "Clean Room",           "icon": "&#128274;"},
+        "id":      {"name": "ID Verification",   "sub": "Banking & Government", "icon": "&#127380;"},
+        "field":   {"name": "Field Inspection",  "sub": "On-site Assessment",   "icon": "&#128269;"},
+    },
+
+    # Persona switcher (set to None to hide)
+    "personas": None,
+    # Example for banking:
+    # "personas": [
+    #     {"name": "Anna", "role": "Branch Manager", "tabs": ["auditor", "id"]},
+    #     {"name": "Sam",  "role": "Wealth Advisor", "tabs": ["day", "chat", "field"]},
+    # ],
+
+    # POC disclaimer text
+    "poc_footer": "This application is a proof-of-concept demonstration of on-device AI development patterns on Copilot+ PCs. Individual features are architectural demonstrations and are not validated for production use.",
+    "poc_auditor": "PROOF OF CONCEPT DEMO -- This is a demonstration of on-device AI document processing architecture. It is not a validated compliance tool or production application and should not be used for actual compliance auditing. Organizations should validate any compliance workflow against their specific regulatory requirements.",
+    "poc_id": "PROOF OF CONCEPT DEMO -- This is a demonstration of on-device document processing. It is not a validated identity verification system and should not be used for actual identity verification, access control, or compliance decisions.",
+}
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
@@ -667,10 +705,14 @@ def extract_text(filepath):
 HTML_TEMPLATE = r'''<!DOCTYPE html>
 <html>
 <head>
-    <title>Local NPU AI Assistant</title>
+    <title>{{APP_TITLE}}</title>
     <link rel="icon" type="image/png" href="/logos/favicon.png">
     <script src="/tesseract/tesseract.min.js"></script>
     <style>
+        :root {
+            --brand-accent: {{BRAND_ACCENT}};
+            --brand-accent-rgb: {{BRAND_ACCENT_RGB}};
+        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -683,7 +725,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .app-shell { display: flex; min-height: 100vh; }
         .sidebar {
             width: 260px; min-width: 260px;
-            background: linear-gradient(180deg, #0d1117 0%, #111827 100%);
+            background: linear-gradient(180deg, {{BRAND_PRIMARY}} 0%, {{BRAND_PRIMARY_END}} 100%);
             border-right: 1px solid rgba(255,255,255,0.08);
             display: flex; flex-direction: column;
             transition: width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1);
@@ -720,6 +762,26 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .sidebar.collapsed .brand-logo-surface { width: 40px; }
         .sidebar.collapsed .brand-logo-copilot { width: 32px; }
 
+        /* Persona Switcher */
+        .persona-switcher {
+            display: flex; gap: 6px; padding: 8px 14px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 4px;
+        }
+        .persona-badge {
+            flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: center;
+            transition: all 0.2s; color: rgba(255,255,255,0.6);
+        }
+        .persona-badge:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .persona-badge.active {
+            background: rgba({{BRAND_ACCENT_RGB}},0.12); border-color: rgba({{BRAND_ACCENT_RGB}},0.4);
+            color: #fff;
+        }
+        .persona-name { display: block; font-weight: 600; font-size: 0.85em; }
+        .persona-role { display: block; font-size: 0.7em; opacity: 0.6; margin-top: 2px; }
+        .sidebar.collapsed .persona-switcher { display: none; }
+        .sidebar-nav-item.persona-dim { opacity: 0.35; }
+
         .sidebar-nav { flex: 1; padding: 12px 0; display: flex; flex-direction: column; gap: 2px; }
         .sidebar-nav-item {
             display: flex; align-items: center; gap: 0;
@@ -729,8 +791,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .sidebar-nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
         .sidebar-nav-item.active {
-            border-left-color: #00BCF2; color: #fff;
-            background: rgba(0,188,242,0.08);
+            border-left-color: {{BRAND_ACCENT}}; color: #fff;
+            background: rgba({{BRAND_ACCENT_RGB}},0.08);
         }
         .nav-icon { font-size: 1.2em; width: 28px; text-align: center; flex-shrink: 0; margin-right: 10px; }
         .sidebar-label { overflow: hidden; text-overflow: ellipsis; }
@@ -832,10 +894,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .logos img.copilot-logo { height: 55px; width: auto; object-fit: contain; }
         .logo-divider { width: 2px; height: 60px; background: rgba(255,255,255,0.3); }
         h1 { font-size: 2.2em; margin-bottom: 10px; }
-        .subtitle { color: #00BCF2; font-size: 1.1em; }
+        .subtitle { color: var(--brand-accent); font-size: 1.1em; }
         .badge {
             display: inline-block;
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             padding: 8px 16px;
             border-radius: 25px;
             font-weight: bold;
@@ -881,7 +943,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             cursor: pointer;
         }
         .model-selector select option { background: #1a1a2e; color: #fff; }
-        .response-timer { text-align: center; font-size: 0.85em; color: #00BCF2; margin-top: 10px; }
+        .response-timer { text-align: center; font-size: 0.85em; color: var(--brand-accent); margin-top: 10px; }
         .tabs { display: none; gap: 10px; margin-bottom: 20px; }
         .tab-btn {
             flex: 1;
@@ -893,12 +955,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             cursor: pointer;
             font-size: 1em;
         }
-        .tab-btn:hover { background: rgba(0,188,242,0.2); }
-        .tab-btn.active { border-color: #00BCF2; background: rgba(0,188,242,0.3); }
+        .tab-btn:hover { background: rgba(var(--brand-accent-rgb),0.2); }
+        .tab-btn.active { border-color: var(--brand-accent); background: rgba(var(--brand-accent-rgb),0.3); }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         .camera-btn {
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             border: none;
             color: #fff;
             padding: 12px 30px;
@@ -963,7 +1025,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             right: 0;
             margin-bottom: 6px;
             background: #1a1a2e;
-            border: 1px solid rgba(0,188,242,0.3);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.3);
             border-radius: 10px;
             padding: 12px 14px;
             font-size: 0.85em;
@@ -978,7 +1040,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .status-dot.green { background: #00CC6A; box-shadow: 0 0 6px rgba(0,204,106,0.5); }
         .status-dot.red { background: #FF4444; box-shadow: 0 0 6px rgba(255,68,68,0.5); }
-        .status-dot.blue { background: #00BCF2; box-shadow: 0 0 6px rgba(0,188,242,0.5); }
+        .status-dot.blue { background: var(--brand-accent); box-shadow: 0 0 6px rgba(var(--brand-accent-rgb),0.5); }
         .status-dot.yellow { background: #FFB900; box-shadow: 0 0 6px rgba(255,185,0,0.5); }
 
         /* Empty state */
@@ -1019,7 +1081,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             text-align: left;
             transition: background 0.15s, border-color 0.15s;
         }
-        .suggestion-chip:hover { background: rgba(0,188,242,0.15); border-color: rgba(0,188,242,0.4); }
+        .suggestion-chip:hover { background: rgba(var(--brand-accent-rgb),0.15); border-color: rgba(var(--brand-accent-rgb),0.4); }
         .chip-icon { font-size: 1.1em; flex-shrink: 0; }
 
         /* Device Health check display */
@@ -1077,23 +1139,23 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             border-radius: 6px; color: #fff; outline: none;
         }
         .device-search-container input[type="text"]:focus {
-            border-color: rgba(0,188,242,0.5);
+            border-color: rgba(var(--brand-accent-rgb),0.5);
         }
         .device-search-container .search-bar {
             display: flex; gap: 8px; align-items: center;
         }
         .device-search-container .search-bar button {
             padding: 8px 16px; font-size: 0.85em; white-space: nowrap;
-            background: rgba(0,188,242,0.2); border: 1px solid rgba(0,188,242,0.4);
-            border-radius: 6px; color: #00BCF2; cursor: pointer;
+            background: rgba(var(--brand-accent-rgb),0.2); border: 1px solid rgba(var(--brand-accent-rgb),0.4);
+            border-radius: 6px; color: var(--brand-accent); cursor: pointer;
         }
         .device-search-container .search-bar button:hover {
-            background: rgba(0,188,242,0.3);
+            background: rgba(var(--brand-accent-rgb),0.3);
         }
         .search-result-item {
             margin: 6px 0; padding: 8px 12px;
             background: rgba(255,255,255,0.03); border-radius: 6px;
-            border-left: 3px solid rgba(0,188,242,0.4); font-size: 0.85em;
+            border-left: 3px solid rgba(var(--brand-accent-rgb),0.4); font-size: 0.85em;
         }
         .search-result-item .sr-name { font-weight: 600; color: #7fdbff; }
         .search-result-item .sr-path {
@@ -1117,7 +1179,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             margin-top: 8px;
             transition: background 0.15s, border-color 0.15s;
         }
-        .inline-action-btn:hover { background: rgba(0,120,212,0.35); border-color: rgba(0,188,242,0.6); }
+        .inline-action-btn:hover { background: rgba(0,120,212,0.35); border-color: rgba(var(--brand-accent-rgb),0.6); }
 
         .chat-container {
             border-radius: 15px;
@@ -1172,7 +1234,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         #sendBtn {
             width: 36px; height: 36px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #0078D4, #00BCF2);
+            background: linear-gradient(135deg, #0078D4, var(--brand-accent));
             border: none;
             color: #fff;
             cursor: pointer;
@@ -1188,7 +1250,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             height: 20px;
             border: 2px solid rgba(255,255,255,0.3);
             border-radius: 50%;
-            border-top-color: #00BCF2;
+            border-top-color: var(--brand-accent);
             animation: spin 1s linear infinite;
             margin-right: 10px;
         }
@@ -1207,10 +1269,10 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             text-align: center;
         }
         .day-card { cursor: pointer; transition: border-color 0.2s, background 0.2s; position: relative; }
-        .day-card:hover { border-color: rgba(0,188,242,0.4); background: rgba(255,255,255,0.09); }
-        .day-card.expanded { border-color: rgba(0,188,242,0.5); background: rgba(255,255,255,0.09); }
+        .day-card:hover { border-color: rgba(var(--brand-accent-rgb),0.4); background: rgba(255,255,255,0.09); }
+        .day-card.expanded { border-color: rgba(var(--brand-accent-rgb),0.5); background: rgba(255,255,255,0.09); }
         .day-card .card-icon { font-size: 1.8em; margin-bottom: 6px; }
-        .day-card .card-count { font-size: 2.2em; font-weight: bold; color: #00BCF2; }
+        .day-card .card-count { font-size: 2.2em; font-weight: bold; color: var(--brand-accent); }
         .day-card .card-label { font-size: 0.85em; opacity: 0.7; }
         .day-card .card-hint { font-size: 0.72em; opacity: 0.4; margin-top: 4px; }
         .day-card .card-peek {
@@ -1220,7 +1282,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             left: -1px;
             right: -1px;
             background: #1a1a2e;
-            border: 1px solid rgba(0,188,242,0.4);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.4);
             border-top: none;
             border-radius: 0 0 12px 12px;
             padding: 10px 12px;
@@ -1234,19 +1296,19 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         .day-card.expanded .card-peek { display: block; }
         .peek-row { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .peek-row:last-child { border-bottom: none; }
-        .peek-time { color: #00BCF2; font-weight: bold; margin-right: 6px; }
+        .peek-time { color: var(--brand-accent); font-weight: bold; margin-right: 6px; }
         .peek-prio { font-weight: bold; margin-right: 6px; }
         .peek-prio.high { color: #FF4444; }
         .peek-prio.medium { color: #FFB900; }
         .peek-prio.low { color: #00CC6A; }
-        .peek-from { color: #00BCF2; margin-right: 6px; }
+        .peek-from { color: var(--brand-accent); margin-right: 6px; }
         .brief-me-btn {
             display: block;
             width: 100%;
             max-width: 400px;
             margin: 0 auto 16px;
             padding: 16px 32px;
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             border: none;
             color: #fff;
             font-size: 1.15em;
@@ -1297,7 +1359,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             cursor: pointer;
             font-size: 0.88em;
         }
-        .day-action-btn:hover { background: rgba(0,188,242,0.2); border-color: rgba(0,188,242,0.4); }
+        .day-action-btn:hover { background: rgba(var(--brand-accent-rgb),0.2); border-color: rgba(var(--brand-accent-rgb),0.4); }
         .day-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .briefing-progress {
             background: rgba(255,255,255,0.04);
@@ -1308,7 +1370,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             display: none;
         }
         .briefing-progress .step-line { padding: 3px 0; opacity: 0.7; }
-        .briefing-progress .step-line.active { opacity: 1; color: #00BCF2; }
+        .briefing-progress .step-line.active { opacity: 1; color: var(--brand-accent); }
         .briefing-result {
             display: none;
             background: rgba(255,255,255,0.05);
@@ -1316,7 +1378,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             overflow: hidden;
         }
         .exec-summary {
-            background: linear-gradient(135deg, rgba(0,120,212,0.15), rgba(0,188,242,0.08));
+            background: linear-gradient(135deg, rgba(0,120,212,0.15), rgba(var(--brand-accent-rgb),0.08));
             padding: 24px;
             font-size: 1.05em;
             line-height: 1.65;
@@ -1379,7 +1441,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             font-size: 0.88em;
         }
         .tool-card .tool-header {
-            color: #00BCF2;
+            color: var(--brand-accent);
             font-weight: bold;
             margin-bottom: 4px;
         }
@@ -1396,7 +1458,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .tool-card .tool-ok { color: #00CC6A; }
         .tool-card .tool-fail { color: #FF4444; }
-        .tool-time { font-size: 0.88em; color: rgba(0,188,242,0.7); opacity: 1; }
+        .tool-time { font-size: 0.88em; color: rgba(var(--brand-accent-rgb),0.7); opacity: 1; }
         .tool-card .tool-time { opacity: 0.8; font-size: 0.9em; }
 
         /* Approval Gate Card */
@@ -1455,8 +1517,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         /* Security Review Box (Agentic Firewall) */
         .security-review {
-            background: rgba(0,188,242,0.06);
-            border: 1px solid rgba(0,188,242,0.2);
+            background: rgba(var(--brand-accent-rgb),0.06);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.2);
             border-radius: 8px;
             padding: 12px 14px;
             margin: 12px 0;
@@ -1493,7 +1555,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .file-picker-modal {
             background: linear-gradient(135deg, #1e1e2f 0%, #15151f 100%);
-            border: 1px solid rgba(0,188,242,0.3);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.3);
             border-radius: 16px;
             padding: 24px;
             min-width: 450px;
@@ -1531,17 +1593,17 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .file-picker-item:hover {
             background: rgba(255,255,255,0.08);
-            border-color: rgba(0,188,242,0.3);
+            border-color: rgba(var(--brand-accent-rgb),0.3);
         }
         .file-picker-item.selected {
-            background: rgba(0,188,242,0.12);
-            border-color: rgba(0,188,242,0.5);
+            background: rgba(var(--brand-accent-rgb),0.12);
+            border-color: rgba(var(--brand-accent-rgb),0.5);
         }
         .file-picker-item input[type="checkbox"] {
             margin-right: 12px;
             width: 18px;
             height: 18px;
-            accent-color: #00BCF2;
+            accent-color: var(--brand-accent);
         }
         .file-picker-item .file-info {
             flex: 1;
@@ -1581,7 +1643,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             color: #fff;
         }
         .file-picker-btn.confirm {
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             color: #fff;
         }
         .file-picker-btn:disabled {
@@ -1603,21 +1665,21 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .auditor-dropzone {
             background: rgba(255,255,255,0.03);
-            border: 2px dashed rgba(0,188,242,0.3);
+            border: 2px dashed rgba(var(--brand-accent-rgb),0.3);
             border-radius: 15px;
             padding: 40px;
             margin-bottom: 30px;
             transition: border-color 0.2s, background 0.2s;
         }
         .auditor-dropzone:hover, .auditor-dropzone.dragover {
-            border-color: rgba(0,188,242,0.6);
-            background: rgba(0,188,242,0.05);
+            border-color: rgba(var(--brand-accent-rgb),0.6);
+            background: rgba(var(--brand-accent-rgb),0.05);
         }
         .dropzone-icon { font-size: 3em; margin-bottom: 15px; }
         .dropzone-title { font-size: 1.15em; font-weight: 600; margin-bottom: 8px; }
         .dropzone-subtitle { font-size: 0.9em; opacity: 0.7; margin-bottom: 20px; line-height: 1.5; }
         .auditor-upload-btn {
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             color: #fff;
             border: none;
             padding: 12px 32px;
@@ -1684,12 +1746,12 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             cursor: pointer;
             transition: background 0.2s, border-color 0.2s;
         }
-        .auditor-action-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(0,188,242,0.4); }
+        .auditor-action-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(var(--brand-accent-rgb),0.4); }
         .auditor-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .auditor-action-btn.secondary { background: rgba(255,255,255,0.05); }
         .auditor-full-audit-btn {
             width: 100%;
-            background: linear-gradient(90deg, #0078D4, #00BCF2);
+            background: linear-gradient(90deg, #0078D4, var(--brand-accent));
             border: none;
             color: #fff;
             padding: 16px;
@@ -1738,7 +1800,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         }
         .log-step { margin-bottom: 12px; }
         .log-step.complete { opacity: 0.8; }
-        .log-step.active { color: #00BCF2; }
+        .log-step.active { color: var(--brand-accent); }
         .log-step.pending { opacity: 0.4; }
         .log-step-icon { margin-right: 8px; }
         .log-step-detail {
@@ -1748,8 +1810,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             margin-top: 4px;
         }
         .log-prompt-box {
-            background: rgba(0,188,242,0.08);
-            border: 1px solid rgba(0,188,242,0.2);
+            background: rgba(var(--brand-accent-rgb),0.08);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.2);
             border-radius: 8px;
             padding: 12px;
             margin: 8px 0 8px 24px;
@@ -1757,7 +1819,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             line-height: 1.5;
         }
         .log-prompt-label {
-            color: #00BCF2;
+            color: var(--brand-accent);
             font-weight: 600;
             margin-bottom: 6px;
         }
@@ -1886,7 +1948,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             text-align: left;
         }
         .id-result-card h3 {
-            color: #00BCF2;
+            color: var(--brand-accent);
             margin-bottom: 15px;
             display: flex;
             align-items: center;
@@ -1965,7 +2027,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         /* Two-Brain Router — Decision Card */
         .decision-card {
             background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(0,188,242,0.3);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.3);
             border-radius: 12px;
             padding: 18px 22px;
             margin: 16px auto;
@@ -2166,8 +2228,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         /* Trust Receipt */
         .trust-receipt {
-            background: rgba(0,188,242,0.06);
-            border: 1px solid rgba(0,188,242,0.2);
+            background: rgba(var(--brand-accent-rgb),0.06);
+            border: 1px solid rgba(var(--brand-accent-rgb),0.2);
             border-radius: 12px;
             padding: 18px 22px;
             margin: 16px auto;
@@ -2393,7 +2455,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <img src="/logos/surface-logo.png" alt="Surface" onerror="this.style.display='none'">
             <img src="/logos/copilot-logo.avif" alt="Copilot+" onerror="this.style.display='none'">
         </div>
-        <div class="warmup-title">Local NPU AI Assistant</div>
+        <div class="warmup-title">{{APP_TITLE}}</div>
         <div class="warmup-status" id="warmupStatus">Loading {{MODEL_LABEL}} on NPU...</div>
         <div class="warmup-bar-track"><div class="warmup-bar-fill" id="warmupBar"></div></div>
         <div class="warmup-time" id="warmupTime"></div>
@@ -2413,25 +2475,26 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         </div>
 
         <nav class="sidebar-nav">
+          {{PERSONA_SWITCHER}}
           <a class="sidebar-nav-item active" data-tab="chat">
-            <span class="nav-icon">&#129302;</span>
-            <span class="sidebar-label">AI Agent<span class="sidebar-nav-sub">Chat &amp; Tooling with {{MODEL_LABEL}}</span></span>
+            <span class="nav-icon">{{TAB_CHAT_ICON}}</span>
+            <span class="sidebar-label">{{TAB_CHAT_NAME}}<span class="sidebar-nav-sub">{{TAB_CHAT_SUB}} with {{MODEL_LABEL}}</span></span>
           </a>
           <a class="sidebar-nav-item" data-tab="day">
-            <span class="nav-icon">&#9728;&#65039;</span>
-            <span class="sidebar-label">My Day<span class="sidebar-nav-sub">AI Chief of Staff</span></span>
+            <span class="nav-icon">{{TAB_DAY_ICON}}</span>
+            <span class="sidebar-label">{{TAB_DAY_NAME}}<span class="sidebar-nav-sub">{{TAB_DAY_SUB}}</span></span>
           </a>
           <a class="sidebar-nav-item" data-tab="auditor">
-            <span class="nav-icon">&#128274;</span>
-            <span class="sidebar-label">Auditor<span class="sidebar-nav-sub">Clean Room</span></span>
+            <span class="nav-icon">{{TAB_AUDITOR_ICON}}</span>
+            <span class="sidebar-label">{{TAB_AUDITOR_NAME}}<span class="sidebar-nav-sub">{{TAB_AUDITOR_SUB}}</span></span>
           </a>
           <a class="sidebar-nav-item" data-tab="id">
-            <span class="nav-icon">&#127380;</span>
-            <span class="sidebar-label">ID Verification<span class="sidebar-nav-sub">Banking &amp; Government</span></span>
+            <span class="nav-icon">{{TAB_ID_ICON}}</span>
+            <span class="sidebar-label">{{TAB_ID_NAME}}<span class="sidebar-nav-sub">{{TAB_ID_SUB}}</span></span>
           </a>
           <a class="sidebar-nav-item" data-tab="field">
-            <span class="nav-icon">&#128269;</span>
-            <span class="sidebar-label">Field Inspection<span class="sidebar-nav-sub">On-site Assessment</span></span>
+            <span class="nav-icon">{{TAB_FIELD_ICON}}</span>
+            <span class="sidebar-label">{{TAB_FIELD_NAME}}<span class="sidebar-nav-sub">{{TAB_FIELD_SUB}}</span></span>
           </a>
         </nav>
 
@@ -2444,7 +2507,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
             <div class="savings-stat savings-stat-hero" id="savingsCO2">&#127793; 0g CO&#8322; avoided</div>
             <div class="savings-stat savings-stat-compact" id="savingsCompact">&#128994; $0.00</div>
           </div>
-          <div class="poc-footer">This application is a proof-of-concept demonstration of on-device AI development patterns on Copilot+ PCs. Individual features are architectural demonstrations and are not validated for production use.</div>
+          <div class="poc-footer">{{POC_FOOTER}}</div>
           <span class="badge" style="text-align:center;">&#9889; {{CHIP_LABEL}}</span>
           <span class="offline-badge" id="offlineBadge">Online</span>
           <div class="sidebar-footer-controls">
@@ -2563,7 +2626,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
             <!-- AI Actions Log (collapsible) -->
             <div id="auditTrail" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 15px;margin-bottom:10px;max-height:120px;overflow-y:auto;font-size:0.8em;display:none;">
-              <strong style="color:#00BCF2;">AI Actions (Logged)</strong>
+              <strong style="color:var(--brand-accent);">AI Actions (Logged)</strong>
               <div style="font-size:0.85em;opacity:0.5;margin:4px 0 6px;">All actions recorded locally for review.</div>
               <div id="auditEntries"></div>
             </div>
@@ -2624,7 +2687,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
         <!-- Auditor Tab (unified: structured analysis + smart escalation) -->
         <div id="auditor-tab" class="tab-content">
 
-            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- This is a demonstration of on-device AI document processing architecture. It is not a validated compliance tool or production application and should not be used for actual compliance auditing. Organizations should validate any compliance workflow against their specific regulatory requirements.</div>
+            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- {{POC_AUDITOR}}</div>
 
             <!-- Mode Selector -->
             <div id="auditorModeSelector">
@@ -2780,7 +2843,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
 
         <!-- ID Verification Tab -->
         <div id="id-tab" class="tab-content">
-            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- This is a demonstration of on-device document processing. It is not a validated identity verification system and should not be used for actual identity verification, access control, or compliance decisions.</div>
+            <div class="poc-banner">&#9888;&#65039; <strong>PROOF OF CONCEPT DEMO</strong> -- {{POC_ID}}</div>
             <div class="auditor-header">&#127380; ID VERIFICATION</div>
 
             <div class="camera-section">
@@ -3105,7 +3168,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                 var toast = document.createElement("div");
                 toast.textContent = text;
                 toast.style.cssText = "position:fixed;bottom:32px;left:50%;transform:translateX(-50%);" +
-                    "background:rgba(0,18,36,0.85);border:1px solid rgba(0,188,242,0.3);" +
+                    "background:rgba(0,18,36,0.85);border:1px solid rgba(var(--brand-accent-rgb),0.3);" +
                     "color:#7fdbff;padding:10px 28px;border-radius:20px;font-size:0.82em;" +
                     "z-index:9999;opacity:0;transition:opacity 0.4s ease;pointer-events:none;" +
                     "backdrop-filter:blur(8px);";
@@ -3212,6 +3275,35 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     backdrop.classList.remove("visible");
                 });
             }
+
+            // === Persona Switcher ===
+            (function() {
+                var badges = document.querySelectorAll(".persona-badge");
+                if (!badges.length) return;
+                badges.forEach(function(badge) {
+                    badge.addEventListener("click", function() {
+                        var wasActive = badge.classList.contains("active");
+                        badges.forEach(function(b) { b.classList.remove("active"); });
+                        var navItems = document.querySelectorAll(".sidebar-nav-item[data-tab]");
+                        if (wasActive) {
+                            // Deselect: restore all tabs
+                            navItems.forEach(function(n) { n.classList.remove("persona-dim"); });
+                            return;
+                        }
+                        badge.classList.add("active");
+                        var tabs = [];
+                        try { tabs = JSON.parse(badge.getAttribute("data-persona-tabs") || "[]"); } catch(e) {}
+                        navItems.forEach(function(n) {
+                            var key = n.getAttribute("data-tab");
+                            if (tabs.length && tabs.indexOf(key) === -1) {
+                                n.classList.add("persona-dim");
+                            } else {
+                                n.classList.remove("persona-dim");
+                            }
+                        });
+                    });
+                });
+            })();
 
             // === My Day handlers ===
             // --- My Day: counts + peek windows ---
@@ -3567,8 +3659,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                     html += '<button class="health-learn-btn" data-question="' +
                                         f.q.replace(/"/g, '&quot;') + '"' +
                                         ' style="display:inline-block;margin:3px 4px 3px 0;padding:4px 10px;font-size:0.78em;' +
-                                        'background:rgba(0,188,242,0.1);border:1px solid rgba(0,188,242,0.25);border-radius:12px;' +
-                                        'color:#00BCF2;cursor:pointer;">' + f.label + ' &rarr;</button>';
+                                        'background:rgba(var(--brand-accent-rgb),0.1);border:1px solid rgba(var(--brand-accent-rgb),0.25);border-radius:12px;' +
+                                        'color:var(--brand-accent);cursor:pointer;">' + f.label + ' &rarr;</button>';
                                 });
                                 html += '</div>';
                             }
@@ -3709,8 +3801,8 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                                     html += '<button class="health-learn-btn" data-question="' +
                                         f.q.replace(/"/g, '&quot;') + '"' +
                                         ' style="display:inline-block;margin:3px 4px 3px 0;padding:4px 10px;font-size:0.78em;' +
-                                        'background:rgba(0,188,242,0.1);border:1px solid rgba(0,188,242,0.25);border-radius:12px;' +
-                                        'color:#00BCF2;cursor:pointer;">' + f.label + ' &rarr;</button>';
+                                        'background:rgba(var(--brand-accent-rgb),0.1);border:1px solid rgba(var(--brand-accent-rgb),0.25);border-radius:12px;' +
+                                        'color:var(--brand-accent);cursor:pointer;">' + f.label + ' &rarr;</button>';
                                 });
                                 html += '</div>';
                             }
@@ -4118,7 +4210,7 @@ HTML_TEMPLATE = r'''<!DOCTYPE html>
                     var summaryText = parts.length > 0 ? parts.join(", ") : "No actions recorded";
 
                     // Show trust receipt banner in chat
-                    var receiptHtml = '<div style="background:rgba(0,188,242,0.08);border:1px solid rgba(0,188,242,0.25);border-radius:10px;padding:14px 18px;margin-bottom:14px;">' +
+                    var receiptHtml = '<div style="background:rgba(var(--brand-accent-rgb),0.08);border:1px solid rgba(var(--brand-accent-rgb),0.25);border-radius:10px;padding:14px 18px;margin-bottom:14px;">' +
                         '<div style="font-size:0.7em;text-transform:uppercase;letter-spacing:0.1em;opacity:0.5;margin-bottom:6px;">\uD83D\uDCCB Session Trust Receipt</div>' +
                         '<div style="font-size:1.05em;font-weight:bold;">' + summaryText + '</div>' +
                         '<div style="font-size:0.85em;opacity:0.6;margin-top:4px;">All actions local. No network calls. No data egress.</div>' +
@@ -6958,10 +7050,49 @@ def serve_tesseract(filename):
 
 @app.route('/')
 def index():
+    _cfg = DEMO_CONFIG
+    _tabs = _cfg["tabs"]
     page = HTML_TEMPLATE.replace("{{CHIP_LABEL}}", CHIP_LABEL) \
                          .replace("{{DEVICE_LABEL}}", DEVICE_LABEL) \
                          .replace("{{MODEL_LABEL}}", MODEL_LABEL) \
-                         .replace("{{MODEL_ALIAS}}", MODEL_ALIAS)
+                         .replace("{{MODEL_ALIAS}}", MODEL_ALIAS) \
+                         .replace("{{APP_TITLE}}", _cfg["app_title"]) \
+                         .replace("{{BRAND_ACCENT}}", _cfg["brand_accent"]) \
+                         .replace("{{BRAND_ACCENT_RGB}}", _cfg["brand_accent_rgb"]) \
+                         .replace("{{BRAND_PRIMARY}}", _cfg["brand_primary"]) \
+                         .replace("{{BRAND_PRIMARY_END}}", _cfg["brand_primary_end"]) \
+                         .replace("{{BRAND_HOVER}}", _cfg["brand_hover"]) \
+                         .replace("{{TAB_CHAT_NAME}}", _tabs["chat"]["name"]) \
+                         .replace("{{TAB_CHAT_SUB}}", _tabs["chat"]["sub"]) \
+                         .replace("{{TAB_CHAT_ICON}}", _tabs["chat"]["icon"]) \
+                         .replace("{{TAB_DAY_NAME}}", _tabs["day"]["name"]) \
+                         .replace("{{TAB_DAY_SUB}}", _tabs["day"]["sub"]) \
+                         .replace("{{TAB_DAY_ICON}}", _tabs["day"]["icon"]) \
+                         .replace("{{TAB_AUDITOR_NAME}}", _tabs["auditor"]["name"]) \
+                         .replace("{{TAB_AUDITOR_SUB}}", _tabs["auditor"]["sub"]) \
+                         .replace("{{TAB_AUDITOR_ICON}}", _tabs["auditor"]["icon"]) \
+                         .replace("{{TAB_ID_NAME}}", _tabs["id"]["name"]) \
+                         .replace("{{TAB_ID_SUB}}", _tabs["id"]["sub"]) \
+                         .replace("{{TAB_ID_ICON}}", _tabs["id"]["icon"]) \
+                         .replace("{{TAB_FIELD_NAME}}", _tabs["field"]["name"]) \
+                         .replace("{{TAB_FIELD_SUB}}", _tabs["field"]["sub"]) \
+                         .replace("{{TAB_FIELD_ICON}}", _tabs["field"]["icon"]) \
+                         .replace("{{POC_FOOTER}}", _cfg["poc_footer"]) \
+                         .replace("{{POC_AUDITOR}}", _cfg["poc_auditor"]) \
+                         .replace("{{POC_ID}}", _cfg["poc_id"])
+    # Persona switcher: inject HTML or empty string
+    personas = _cfg.get("personas")
+    if personas:
+        persona_html = '<div class="persona-switcher" id="personaSwitcher">'
+        for p in personas:
+            tabs_json = json.dumps(p.get("tabs", []))
+            persona_html += f'<button class="persona-badge" data-persona-tabs=\'{tabs_json}\'>'
+            persona_html += f'<span class="persona-name">{p["name"]}</span>'
+            persona_html += f'<span class="persona-role">{p["role"]}</span></button>'
+        persona_html += '</div>'
+    else:
+        persona_html = ''
+    page = page.replace("{{PERSONA_SWITCHER}}", persona_html)
     return render_template_string(page)
 
 @app.route('/upload-to-demo', methods=['POST'])
@@ -10994,9 +11125,10 @@ if __name__ == '__main__':
         print("\n** DEMO MODE ENABLED - Offline check bypassed for Clean Room Auditor **\n")
 
     print("\n" + "="*50)
-    print(f"Local NPU AI Assistant ({EDITION_TAG})")
+    print(f"{DEMO_CONFIG['app_title']} ({EDITION_TAG})")
     print(f"  {DEVICE_LABEL} — {CHIP_LABEL}")
-    print("  My Day + AI Agent + Auditor + ID Verification")
+    _tab_names = " + ".join(t["name"] for t in DEMO_CONFIG["tabs"].values())
+    print(f"  {_tab_names}")
     print("="*50)
     print(f"Model: {DEFAULT_MODEL}")
     if FOUNDRY_AVAILABLE:
