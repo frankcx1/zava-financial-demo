@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Beneficiary Designation Form - Flagstar Financial</title>
+<style>
+  @import url('/fonts/urbanist-400.ttf');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Times New Roman', 'Georgia', serif;
+    background: #f5f5f0;
+    color: #222;
+    padding: 20px;
+  }
+  .form-page {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 40px 50px;
+    position: relative;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  /* Watermark */
+  .form-page::before {
+    content: 'FOR DEMONSTRATION PURPOSES ONLY';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-35deg);
+    font-size: 42px;
+    color: rgba(200, 200, 200, 0.25);
+    font-weight: bold;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    letter-spacing: 4px;
+  }
+  /* Header */
+  .form-header {
+    border-bottom: 3px solid #6b1d2a;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .form-logo {
+    font-family: Arial, sans-serif;
+  }
+  .form-logo .logo-name {
+    font-size: 28px;
+    font-weight: 800;
+    color: #6b1d2a;
+    letter-spacing: 1px;
+  }
+  .form-logo .logo-sub {
+    font-size: 11px;
+    color: #888;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .form-title {
+    text-align: right;
+  }
+  .form-title h1 {
+    font-size: 18px;
+    font-weight: bold;
+    color: #6b1d2a;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .form-title .form-number {
+    font-size: 10px;
+    color: #999;
+    margin-top: 2px;
+  }
+  /* Sections */
+  .section {
+    margin-bottom: 18px;
+    position: relative;
+    z-index: 2;
+  }
+  .section-header {
+    background: #6b1d2a;
+    color: #fff;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+  .field-row {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 8px;
+  }
+  .field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .field.small { max-width: 150px; }
+  .field.medium { max-width: 250px; }
+  .field-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #666;
+    margin-bottom: 2px;
+    font-family: Arial, sans-serif;
+  }
+  .field-value {
+    border-bottom: 1px solid #333;
+    padding: 3px 4px 2px;
+    font-size: 13px;
+    min-height: 22px;
+    font-family: 'Courier New', monospace;
+  }
+  .field-value.prefilled {
+    color: #222;
+  }
+  .field-input {
+    border: none;
+    border-bottom: 1px solid #333;
+    padding: 3px 4px 2px;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    width: 100%;
+    outline: none;
+    min-height: 22px;
+  }
+  .field-input:focus {
+    border-bottom-color: #6b1d2a;
+    border-bottom-width: 2px;
+  }
+  select.field-input {
+    -webkit-appearance: none;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  /* Signature pads */
+  .sig-area {
+    margin-top: 6px;
+  }
+  .sig-area label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #666;
+    font-family: Arial, sans-serif;
+  }
+  .sig-canvas-wrap {
+    border: 1px solid #999;
+    border-radius: 2px;
+    background: #fafafa;
+    margin-top: 4px;
+    position: relative;
+    display: inline-block;
+  }
+  .sig-canvas-wrap canvas {
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .sig-canvas-wrap .sig-line {
+    position: absolute;
+    bottom: 35px;
+    left: 20px;
+    right: 20px;
+    border-bottom: 1px solid #ccc;
+    pointer-events: none;
+  }
+  .sig-canvas-wrap .sig-x {
+    position: absolute;
+    bottom: 30px;
+    left: 10px;
+    font-size: 18px;
+    color: #ccc;
+    pointer-events: none;
+    font-family: Arial;
+  }
+  .clear-sig-btn {
+    font-size: 11px;
+    padding: 3px 12px;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    cursor: pointer;
+    margin-top: 4px;
+    font-family: Arial, sans-serif;
+    color: #666;
+  }
+  .clear-sig-btn:hover { background: #e8e8e8; }
+  /* Capture button */
+  .capture-bar {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+  .capture-btn {
+    padding: 10px 28px;
+    background: #6b1d2a;
+    color: #fff;
+    border: none;
+    font-size: 14px;
+    font-family: Arial, sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+  .capture-btn:hover { background: #8a2535; }
+  .capture-btn.secondary {
+    background: #fff;
+    color: #6b1d2a;
+    border: 2px solid #6b1d2a;
+  }
+  .capture-btn.secondary:hover { background: #f9f0f1; }
+  /* Footer */
+  .form-footer {
+    text-align: center;
+    font-size: 9px;
+    color: #bbb;
+    margin-top: 15px;
+    font-family: Arial, sans-serif;
+    letter-spacing: 0.5px;
+  }
+  /* Percentage note */
+  .pct-note {
+    font-size: 9px;
+    color: #999;
+    font-style: italic;
+    margin-top: 2px;
+    font-family: Arial, sans-serif;
+  }
+  .capture-status {
+    display: none;
+    text-align: center;
+    margin-top: 10px;
+    padding: 10px;
+    background: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    border-radius: 4px;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    color: #2e7d32;
+  }
+</style>
+</head>
+<body>
+
+<div class="form-page" id="formPage">
+
+  <div class="form-header">
+    <div class="form-logo">
+      <div class="logo-name">Flagstar Financial</div>
+      <div class="logo-sub">Wealth Management Division</div>
+    </div>
+    <div class="form-title">
+      <h1>Beneficiary Designation Form</h1>
+      <div class="form-number">Form BDF-2026 Rev. 01/2026</div>
+    </div>
+  </div>
+
+  <!-- Section 1: Account Holder -->
+  <div class="section">
+    <div class="section-header">Section 1: Account Holder Information</div>
+    <div class="field-row">
+      <div class="field">
+        <div class="field-label">Full Legal Name</div>
+        <div class="field-value prefilled">Jackie Marie Rodriguez</div>
+      </div>
+      <div class="field small">
+        <div class="field-label">Date of Birth</div>
+        <div class="field-value prefilled">04/12/1981</div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <div class="field-label">Address</div>
+        <div class="field-value prefilled">1847 Maple Avenue, Troy, MI 48083</div>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field small">
+        <div class="field-label">Account Number</div>
+        <div class="field-value prefilled">****7093</div>
+      </div>
+      <div class="field small">
+        <div class="field-label">SSN (Last 4)</div>
+        <div class="field-value prefilled">XXX-XX-7093</div>
+      </div>
+      <div class="field medium">
+        <div class="field-label">Account Type</div>
+        <div class="field-value prefilled">403(b) Retirement Account</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2: Primary Beneficiary -->
+  <div class="section">
+    <div class="section-header">Section 2: Primary Beneficiary</div>
+    <div class="field-row">
+      <div class="field">
+        <div class="field-label">Full Legal Name</div>
+        <input class="field-input" type="text" placeholder="">
+      </div>
+      <div class="field small">
+        <div class="field-label">Relationship</div>
+        <select class="field-input">
+          <option value=""></option>
+          <option value="spouse">Spouse</option>
+          <option value="child">Child</option>
+          <option value="parent">Parent</option>
+          <option value="sibling">Sibling</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field small">
+        <div class="field-label">Date of Birth</div>
+        <input class="field-input" type="text" placeholder="MM/DD/YYYY">
+      </div>
+      <div class="field small">
+        <div class="field-label">SSN (Last 4)</div>
+        <input class="field-input" type="text" placeholder="XXX-XX-____">
+      </div>
+      <div class="field small">
+        <div class="field-label">Percentage</div>
+        <input class="field-input" type="text" placeholder="%">
+      </div>
+    </div>
+    <div class="pct-note">Primary beneficiary percentages must total 100%</div>
+  </div>
+
+  <!-- Section 3: Contingent Beneficiary -->
+  <div class="section">
+    <div class="section-header">Section 3: Contingent Beneficiary (Optional)</div>
+    <div class="field-row">
+      <div class="field">
+        <div class="field-label">Full Legal Name</div>
+        <input class="field-input" type="text" placeholder="">
+      </div>
+      <div class="field small">
+        <div class="field-label">Relationship</div>
+        <select class="field-input">
+          <option value=""></option>
+          <option value="spouse">Spouse</option>
+          <option value="child">Child</option>
+          <option value="parent">Parent</option>
+          <option value="sibling">Sibling</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field small">
+        <div class="field-label">Date of Birth</div>
+        <input class="field-input" type="text" placeholder="MM/DD/YYYY">
+      </div>
+      <div class="field small">
+        <div class="field-label">SSN (Last 4)</div>
+        <input class="field-input" type="text" placeholder="XXX-XX-____">
+      </div>
+      <div class="field small">
+        <div class="field-label">Percentage</div>
+        <input class="field-input" type="text" placeholder="%">
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 4: Account Holder Signature -->
+  <div class="section">
+    <div class="section-header">Section 4: Account Holder Signature</div>
+    <div class="field-row">
+      <div class="field">
+        <div class="sig-area">
+          <label>Signature of Account Holder</label>
+          <div class="sig-canvas-wrap">
+            <canvas id="sigHolder" width="500" height="150"></canvas>
+            <div class="sig-line"></div>
+            <div class="sig-x">X</div>
+          </div>
+          <br><button class="clear-sig-btn" onclick="clearCanvas('sigHolder')">Clear Signature</button>
+        </div>
+      </div>
+      <div class="field small">
+        <div class="field-label">Date</div>
+        <div class="field-value prefilled" id="holderDate"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 5: Advisor Signature -->
+  <div class="section">
+    <div class="section-header">Section 5: Financial Advisor Acknowledgment</div>
+    <div class="field-row">
+      <div class="field">
+        <div class="sig-area">
+          <label>Signature of Financial Advisor</label>
+          <div class="sig-canvas-wrap">
+            <canvas id="sigAdvisor" width="500" height="150"></canvas>
+            <div class="sig-line"></div>
+            <div class="sig-x">X</div>
+          </div>
+          <br><button class="clear-sig-btn" onclick="clearCanvas('sigAdvisor')">Clear Signature</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-label">Advisor Name</div>
+        <input class="field-input" type="text" placeholder="">
+        <div style="height:10px;"></div>
+        <div class="field-label">Date</div>
+        <div class="field-value prefilled" id="advisorDate"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Capture bar (outside form for screenshot) -->
+<div style="max-width:900px;margin:0 auto;">
+  <div class="capture-bar">
+    <button class="capture-btn" onclick="captureForm()">Capture Form as Image</button>
+    <button class="capture-btn secondary" onclick="window.print()">Print Form</button>
+  </div>
+  <div class="capture-status" id="captureStatus"></div>
+  <div class="form-footer">
+    This is a fictional document created for demonstration purposes. Flagstar Financial is used for illustrative purposes only.
+  </div>
+</div>
+
+<script>
+// Auto-fill dates
+var today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+document.getElementById('holderDate').textContent = today;
+document.getElementById('advisorDate').textContent = today;
+
+// Signature pad logic with pressure support
+function initSignaturePad(canvasId) {
+    var canvas = document.getElementById(canvasId);
+    var ctx = canvas.getContext('2d');
+    var drawing = false;
+    var lastX = 0, lastY = 0, lastMid = null;
+
+    function getPos(e) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left) * (canvas.width / rect.width),
+            y: (e.clientY - rect.top) * (canvas.height / rect.height),
+            pressure: e.pressure || 0.5
+        };
+    }
+
+    canvas.addEventListener('pointerdown', function(e) {
+        e.preventDefault();
+        drawing = true;
+        var pos = getPos(e);
+        lastX = pos.x;
+        lastY = pos.y;
+        lastMid = null;
+        canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', function(e) {
+        if (!drawing) return;
+        e.preventDefault();
+        var pos = getPos(e);
+        var midX = (lastX + pos.x) / 2;
+        var midY = (lastY + pos.y) / 2;
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 1.5 + (pos.pressure * 3.5);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (lastMid) {
+            ctx.moveTo(lastMid.x, lastMid.y);
+            ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+        } else {
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(midX, midY);
+        }
+        ctx.stroke();
+
+        lastMid = { x: midX, y: midY };
+        lastX = pos.x;
+        lastY = pos.y;
+    });
+
+    function endDraw() { drawing = false; lastMid = null; }
+    canvas.addEventListener('pointerup', endDraw);
+    canvas.addEventListener('pointerleave', endDraw);
+    canvas.addEventListener('pointercancel', endDraw);
+}
+
+function clearCanvas(canvasId) {
+    var canvas = document.getElementById(canvasId);
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+}
+
+initSignaturePad('sigHolder');
+initSignaturePad('sigAdvisor');
+
+// Capture form as image
+function captureForm() {
+    var form = document.getElementById('formPage');
+    var status = document.getElementById('captureStatus');
+
+    // Use canvas to capture
+    status.style.display = 'block';
+    status.textContent = 'Capturing form...';
+
+    // Simple approach: open the form in a new window for screenshot
+    // For the demo, we'll create a data URL from the form
+    var canvas = document.createElement('canvas');
+    var rect = form.getBoundingClientRect();
+    canvas.width = rect.width * 2;
+    canvas.height = rect.height * 2;
+
+    // Since html2canvas is not loaded, provide instructions
+    status.innerHTML = '<strong>Form ready for capture!</strong><br>' +
+        'Use <kbd>Win+Shift+S</kbd> (Snipping Tool) to capture the form area.<br>' +
+        'Save as PNG, then use it in the Meeting Notes tab > Load Demo Photo.<br><br>' +
+        'Or drag the saved image onto the Photo Evidence area in the app.';
+}
+</script>
+
+</body>
+</html>

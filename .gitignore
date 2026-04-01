@@ -40,3 +40,18 @@ _junk/
 # Claude Code local settings (user-specific)
 .claude/
 memory/
+dist/
+build/
+.d365_token_cache.json
+.graph_token_cache.json
+.d365_token_cache.json
+.graph_token_cache.json
+*.pem
+*.cer
+Flagstar*
+flagstar*
+newcheck.png
+jackiecheck.png
+jackierodriguez.png
+Jackie403b.png
+JackieD365.png

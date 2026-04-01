@@ -1,0 +1,16 @@
+From: Michelle Mac <michelle.mac@microsoft.com>
+To: Advisor <advisor@flagstar.com>
+Cc: Frank Bu <frankbu@microsoft.com>
+Subject: D365 Customer 360 - Flagstar branding update
+Date: Wed, 26 Mar 2026 15:48:00 -0400
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Message-ID: <20260326154800.mmac-d365@microsoft.com>
+
+Hi team,
+
+Quick update on the D365 Customer 360 view for the Flagstar demo. I've applied the updated brand kit (gold star logo, orange accent #f18f12) to the customer dashboard and relationship summary panels. The demo tenant has Jackie Rodriguez and the Henderson family pre-seeded as contacts.
+
+I'll push the Power App changes to the demo environment by Friday. Let me know if you need any fields added to the customer card before then.
+
+Michelle
